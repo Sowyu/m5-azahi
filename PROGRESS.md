@@ -1,6 +1,25 @@
 # Progress — 2026-09-13
 
-## Current: full-height display and persisted scaling verified
+## Current departure checkpoint: USB tethering unresolved
+
+KDE v7 boots from SSD and full-height display/175% scaling were verified.
+USB internet is currently NOT working: latest Linux phone interface is
+Imaging, no network driver/interface, only loopback and no IPv4 route.
+The phone visibly requests tethering but reports a failed data-role switch;
+the latest attached HPM probe is healthy and matches the earlier working
+host/source status. This disagreement remains unresolved.
+
+**Automatic azahi-usb startup was disabled for testing and NOT restored.**
+Manual service start does not re-enable it. Native remote access is down.
+No new USB driver or boot image was installed during these latest tests.
+The user is leaving; hardware testing is paused. No proxy boot requested.
+
+[The complete handoff](docs/HANDOFF.md) now records the chronological tests,
+failed hypotheses, exact current settings, PR reviews, safety rules, rollback
+responsibilities and acceptance criteria. Read it before old success entries.
+Shutdown, Wi-Fi, multicore, native GPU and native Codex remain unresolved.
+
+## Earlier verified baseline: full-height display and persisted scaling
 
 One v7 cold boot passed: 3024x1964 display, user-selected 175% scaling
 persisted, SSD root, USB tethering, SSH and certificate-validated HTTPS.

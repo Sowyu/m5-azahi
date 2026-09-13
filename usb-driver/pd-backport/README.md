@@ -1,5 +1,16 @@
 # SPMI4 transport prototype and SN201202x backport — host tests only
 
+## Current Sep13 departure checkpoint
+
+The broader SPMI/PD backport remains a host-tested prototype. The separate
+guarded one-shot HPM helper WAS built and installed later; the historical
+statements below that no native PD helper is installed no longer apply to it.
+Latest attached probe: result0/ready1/poisoned0/state0, status0x108280fd,
+power0xf0d. Networking is nevertheless currently unavailable. Do not force
+a role swap from the phone UI alone or claim HPM success proves USB data.
+Automatic USB startup was disabled during testing and remains disabled.
+Read [the complete handoff](../../docs/HANDOFF.md) before older checkpoints.
+
 2026-09-13. Host-only compile audit for USB2 tethering on T6050/J714s.
 No loadable PD module, overlay or installer. The separate host proxy diagnostic
 has now performed attended hardware tests, detailed below.

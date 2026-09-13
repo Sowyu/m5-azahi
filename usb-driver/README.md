@@ -1,6 +1,12 @@
 # T6050 right-port USB2 candidate
 
-**Offline-tested experimental source; live USB tethering not yet demonstrated.**
+**Experimental source: earlier live tethering worked, but current networking
+is broken and reliability is unresolved.** Automatic azahi-usb startup was
+disabled for a diagnostic boot and has NOT been restored. Current phone
+interface is Imaging, not network; attached HPM probe succeeds. Installed
+boot is v7; old v4/v5 checkpoints below are historical. No new USB driver
+was installed during the latest screenshot-driven tests. User departure
+pauses hardware testing; do not repeat live controller/overlay reloads.
 See [current progress](../PROGRESS.md), [handoff](../docs/HANDOFF.md) and
 [build limitations](../docs/BUILD-AND-TEST.md).
 

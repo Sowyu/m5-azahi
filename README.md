@@ -32,26 +32,28 @@ a daily-use machine. Never use the reference disk geometry on another SSD.**
 | Component | Evidence so far |
 | --- | --- |
 | Native Linux / SSD root | Native Fedora KDE from Btrfs SSD root demonstrated |
-| Autonomous boot | v6 cold boot reached SSD KDE; native SSH verified, without a new helper payload |
+| Autonomous boot | v7 SSD KDE cold boot verified; does not establish reliable USB networking |
 | Corrected v6 | RAM boot reached KDE; Recovery installation and exact readback verified |
 | CPU | One core; secondary-core startup unresolved |
 | Graphics | Software rendering; no native GPU acceleration |
 | Keyboard | Working, with past compositor-related lag |
 | Trackpad | Working on some boots; intermittent early AFE startup failure |
-| USB tethering | Automatic startup and HTTPS verified on one cold boot with USB-C ports empty until KDE |
-| Remote access | Saved SSH services and USB network profile reconnected automatically after cold boot |
+| Display/settings | Full 3024x1964 display and persisted 175% scaling verified on v7 |
+| USB tethering | Worked on earlier boots; CURRENTLY FAILED; automatic USB startup temporarily disabled |
+| Remote access | Saved SSH/tunnel setup exists; currently unreachable without USB networking |
 | Wi-Fi | N1/Centauri investigation only; no working Linux driver here |
 | Shutdown | Can stall at poweroff.target; final power-off unresolved |
 
 Read [PROGRESS.md](PROGRESS.md) and [the handoff](docs/HANDOFF.md) before continuing.
 Publication is guarded by [default-deny ignores and index/history checks](docs/PUBLICATION-SAFETY.md).
 
-**Current working boot procedure on the research machine:** leave every USB-C
-socket empty while booting Linux (MagSafe may remain). After KDE loads, connect
-the phone to the right-side USB-C port and enable tethering. Linux-side USB,
-networking and SSH startup then ran automatically in the verified test.
-Cable-connected startup and live USB-controller reload are not reliable; do
-not treat one successful cold boot as general hardware support.
+**Current departure state:** KDE is running, but the phone has not exposed a
+working network interface. USB automatic startup was deliberately disabled
+for a delayed-start experiment and has not been restored. Both automatic and
+delayed manual startup have subsequently failed to provide reliable internet.
+No more reboot/proxy tests are requested while the user is away. Read the
+handoff before changing anything; older successful tests are not a current
+working recipe. Live USB-controller reload is unsafe and previously failed.
 
 ## Contents
 

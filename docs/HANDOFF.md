@@ -1,8 +1,316 @@
 # Resume safely
 
-## Current status: v7 cold boot verified; audit repairs in progress
+# USB tethering incident and resume handoff — 2026-09-13
 
-This section supersedes the chronological checkpoints below. One v7 cold
+## Read this first
+
+**KDE boots from SSD, but USB internet is currently NOT working.**
+Earlier successful tethering/SSH/HTTPS tests remain real historical evidence,
+not proof that the current system is connected or reliable for travel.
+The user requested documentation now; no additional hardware test or reboot
+is being initiated as part of this handoff.
+
+**Automatic USB startup was deliberately disabled for a diagnostic boot and
+has not been restored.** A successful manual `systemctl start azahi-usb`
+does not re-enable startup on the next boot. Do not lose this fact.
+
+Latest evidence is a successful attached HPM diagnostic, not networking:
+`result=0 ready=1 poisoned=0 state=0`, status `0x108280fd`,
+power `0x0f0d`. The status/power values agree with the earlier successful
+host/source observation. The data value wraps in the supplied photo and is
+not used here as independently transcribed evidence.
+
+## Scope, boundaries and user preferences
+
+- Priority on resumption: reliable USB tethering, then shutdown. Native Wi-Fi,
+  additional CPU cores, native GPU and native Codex setup remain later work.
+- Never touch the daily macOS partition, repartition, resize, format, or
+  assume a Recovery disk number identifies the approved Linux Preboot.
+- Do not unload the live USB overlay, PHY, DWC3 or input transport. A prior
+  DWC3 unload/reload ended in controller reset timeout; live input removal
+  also has a known dangerous path.
+- Do not bypass HPM poison/refusal guards, force electrical power, or issue
+  speculative PD role tasks. Never interpret module-load success as working
+  controller probe, enumeration, networking, or successful shutdown.
+- Avoid repeated identical reboot/cable/tether-toggle instructions. The user
+  tried another Thunderbolt 4 cable with the same behavior. A cable defect
+  has not been demonstrated; another equivalent cable test is not next.
+- Do not use the user's name. Use a short notification sound when stopping
+  or requesting physical assistance; no text-to-speech.
+- User-supplied screenshots are diagnostic evidence, not publishable assets.
+  Earlier webcam permission does not authorize publishing captures. Honor any
+  current restrictions on webcam use.
+- Never publish photos, phone serials, credentials, private paths, raw device
+  dumps, enrollment receipts, recovery material or private Git backups.
+- Do not upgrade the kernel or core runtime as an incidental dependency fix.
+
+## Installed system and changes actually made
+
+| Component | State / evidence |
+| --- | --- |
+| Machine | J714s / Mac17,9, Apple M5 Pro / T6050 |
+| Kernel | Exact `7.0.13-400.asahi.fc44.aarch64+16k` |
+| Boot | Installed v7 standalone SSD-root image; earlier cold boot verified |
+| Desktop | KDE, software rendering, one CPU online |
+| Display | v7 full 3024x1964 at 60 Hz; user confirmed 175% scaling |
+| Settings | SSD-backed `/root/.config/azahi-kde`; empty-session login configured |
+| USB | Right socket, experimental USB2 host-only stack |
+| Network | Latest `nmcli` only `lo`; IPv4 routing table empty |
+| Phone | Nothing Phone 3a Pro; USB tethering visibly selected |
+| Remote access | Previously installed dedicated SSH/tunnel/profile; last host check connection refused |
+| Shutdown | Still hangs at final poweroff target on reported attempts |
+| Wi-Fi / GPU / SMP | Not working / unresolved |
+| Native Codex CLI | Not installed or verified |
+
+Installed v7 image SHA256:
+`2eaea0bc1503c2ac74a1b11dbb88423675f324a61db3da6db1aa88392672f5ba`,
+size 92651520 bytes. The earlier working v6 rollback SHA256 is
+`324822de14a43ab164d0ec6257d50d9dd6be1b17fd063faf24b0d571e41096ee`.
+Hashes identify private preserved artifacts; they are not public downloads.
+
+Native USB files are under `/opt/azahi-usb`. Older manual test files also
+exist under `/root/usb-candidate`; do not assume these bundles are identical.
+The saved NetworkManager connection is `azahi-usb-tether`, originally on
+`enu1`. A profile cannot create a missing USB network interface.
+
+Changes in this diagnostic sequence:
+
+1. Root-hub `power/control=on` was tested on both USB root hubs in an earlier
+   boot. It did not restore connectivity. These writes were boot-local.
+2. `systemctl disable azahi-usb` was instructed and the user returned from
+   the diagnostic reboot. Automatic startup has not been re-enabled or
+   independently rechecked since. Treat it as disabled until verified.
+3. In subsequent boots the user manually loaded the HPM helper in
+   `mode=awake`, then started the USB service.
+4. Only the healthy HPM diagnostic helper was later unloaded/reloaded in
+   `mode=probe` to obtain fresh attached-state information.
+5. USB debugging was instructed temporarily OFF on the phone. The subsequent
+   interface changed from ADB to Imaging, but the exact phone toggle history
+   was not independently captured. Do not assume all developer options were
+   changed, or blame them for the initial failure.
+6. No new driver, boot image, NetworkManager profile or package was installed
+   during these latest screenshot-driven tests. No macOS storage change.
+
+## Earlier verified success
+
+The original right-port USB modules plus guarded HPM wake produced a USB
+network interface. DHCP, external DNS/ping and Firefox worked. An initial
+certificate error was traced to the wrong system date; after chronyd and
+clock correction, interface-bound HTTPS succeeded with verification enabled.
+Do not disable TLS verification as a networking workaround.
+
+Dedicated pinned-key native SSH and reverse-tunnel services were then
+installed and tested. A v6 cold boot, and later one v7 cold boot, reached KDE
+and re-established USB networking/SSH without a new proxy payload.
+The v7 test also verified the full-height display and persisted scale.
+These are individual successful tests, not endurance/hotplug guarantees.
+
+## Detailed failure/test chronology
+
+1. **Regression after reboot/reconnect.** User reported no websites. Linux
+   showed only loopback and no IPv4 route. Service restart returned quietly,
+   and charging/tether-toggle availability varied.
+2. **Initial enumeration failure.** Logs showed xHCI root hubs, successful
+   phone descriptor reads, then `can't set config #1, error -71`, hub port
+   disabled/re-enabled and disconnect/re-enumeration. USB error -71 is a
+   protocol error, not proof that the cable, EMI or any one component is the
+   cause. The hub's “EMI?” wording is not a diagnosis.
+3. **Only root hubs at another snapshot.** USB sysfs contained just
+   `1-0:1.0 2-0:1.0 usb1 usb2`; no phone node and no USB network device.
+   Changing NetworkManager settings could not fix that state.
+4. **Runtime PM experiment.** USB2 root-hub runtime status was suspended.
+   Writing `on` to usb1 and then usb2 power/control did not restore the
+   phone. Post-write runtime status was not captured. Suspension could have
+   resulted from an empty bus; it was not established as the cause.
+5. **Alternate cable.** Thunderbolt 4 cable gave the same behavior. Stop
+   repeating cable tests without a materially different hypothesis.
+6. **Delayed host-start experiment.** Automatic USB startup was disabled.
+   After a cold boot with no phone, HPM awake returned result0/ready1/
+   poisoned0. The phone was attached before manual USB-controller startup.
+   This order resembled the earlier manual success but did NOT restore
+   networking.
+7. **Fresh delayed-start log.** Host mode up at approximately 205.110s;
+   phone descriptors at 205.471s; configuration error -71 and disconnect.
+   Another detection at 531.034s again failed configuration, followed by
+   device-number4 at 531.508s. Therefore later detection events did occur:
+   it is wrong to claim reconnect interrupts were completely dead.
+8. **ADB-only device.** `lsusb -t` showed device4/interface0 at 480M,
+   vendor-specific class, no kernel driver. Descriptor inspection gave
+   class255/subclass66/protocol1, two endpoints: ADB, not NCM/RNDIS.
+   VID/PID was `18d1:4e11`. The same command also reported device-status
+   EAGAIN(11) and an interface-string error, so cached descriptors did not
+   establish a healthy live link. Do not force-bind a network driver to ADB.
+9. **Phone tether off/on.** A single toggle without unplugging was requested.
+   A repeated identical photo did not independently confirm its outcome.
+   A later fresh descriptor photo confirmed ADB-only at that point.
+10. **Phone debugging isolation and user reboot.** Temporarily disabling
+    USB debugging, then selecting tethering, was requested. User rebooted
+    Linux on their own hunch. Charging/USB did not start automatically;
+    startup was still disabled. The manual HPM/service sequence was given,
+    and user reported no network.
+11. **Latest boot, fresh Linux evidence.** HPM awake at about 85s:
+    result0/ready1/poisoned0/state0, disconnected status0x10000000,
+    power0/data0. Manual USB service start returned without an error.
+    xHCI host mode up at 124.276s; phone descriptors at 124.639s.
+    `lsusb -t` showed device2/interface0, **Imaging**, no kernel driver,
+    480M. VID/PID now `18d1:4ee1`. No -71 or disconnect appeared in the
+    displayed current tail; this does not prove no error elsewhere.
+    The later Apple MTP RTKit oslog is not itself a phone USB error.
+12. **Phone UI verified.** USB tethering was visibly selected, while
+    “USB controlled by: This device” was selected and “Connected device”
+    said “Couldn't switch.” The charge-connected-device option was off,
+    and the phone battery icon indicated charging. Do not keep telling the
+    user to choose tethering as though they had not already done so.
+13. **Fresh attached HPM probe — latest result.** Only the healthy helper
+    was refreshed with `mode=probe`. At about 630s it returned
+    result0/ready1/poisoned0/state0, status0x108280fd, power0xf0d.
+    Under the pinned driver's status definitions, plug-present, source and
+    host bits are set. These match the earlier successful status/power
+    values, despite the phone UI's apparent role disagreement. No network
+    verification followed; the user asked for documentation.
+
+Some photos were reused. Above, repeated images are explicitly separated
+from fresh logs and user-reported outcomes. Timestamps are boot-relative,
+not a continuous wall-clock sequence across reboots.
+
+## Interpretation: what is known versus still hypothetical
+
+Established:
+
+- At least some attempts enumerate phone descriptors, and some expose an
+  actual USB interface. “USB is completely dead” is too broad.
+- The latest observed interface is Imaging, not a network function.
+- Phone UI requests tethering; Linux's recorded interface does not match.
+- HPM wake and the latest attached diagnostic succeeded without a reported
+  transport poison. Matching HPM status does not guarantee data-plane health.
+- No current network interface means DHCP/DNS/profile changes are premature.
+
+Unproven:
+
+- Exact cause of the earlier -71 configuration transfers.
+- Whether phone UI/HAL state, role negotiation, stale USB function state,
+  eUSB2 repeater synchronization, controller lifecycle or more than one
+  issue explains the differing snapshots.
+- Whether a USB-A intermediary would avoid problematic USB-C role changes.
+  It has not been tested, availability is not confirmed, and no purchase or
+  guaranteed workaround has been recommended.
+- Whether a phone-only restart would help. It has not been established as
+  a fix and must not become another blind reset loop.
+
+Do not request a power/data-role swap merely because the phone UI says
+“Couldn't switch”: the latest laptop-side status already reports host/source.
+Reconcile the disagreement before forcing a change.
+
+## Source findings and PR review
+
+- [PR4 USB](https://github.com/Sowyu/m5-azahi/pull/4), head
+  `6d43d571d122bb389218110edea960718fd88e40`: fully read, including the
+  diagnostic note; no newer commits/comments/reviews at last check.
+  Adds startup stage/error diagnostics and treats some network modules as
+  optional. Ten mocked startup tests passed in an isolated private copy.
+  It does not implement hotplug/PHY reset or solve the current interface
+  mismatch. Its no-charging diagnosis describes older v6 evidence.
+- Existing Apple glue explicitly documents coordinated PHY/DWC3 lifecycle
+  around CC attach/detach and repeater resets. Forced-host mode bypasses
+  the normal role-switch source. This is a real limitation, not proof of
+  the exact current failure.
+- Exact DWC3 core initializes PHYs, performs core soft reset, then powers
+  PHYs on. This custom PHY has no init callback; hardware initialization
+  is in power_on, and power_off gates clocks/asserts reset. This is a
+  plausible explanation for the earlier reload -110, not a verified fix.
+  Do not skip core reset or change live register ordering on this basis alone.
+- Glue calls initial USB2 set_mode before handles are acquired; provider
+  deliberately defaults to HOST. The null initial call is not by itself a
+  demonstrated cause of -71.
+- [PR3 shutdown](https://github.com/Sowyu/m5-azahi/pull/3), head
+  `a873059167b7ddf0946151b7f0c62d2188088444`: proposed module loading is
+  insufficient against the exact Fedora source patch, whose reboot-driver
+  probe rejects devices without an OF node. Current SMC DT lacks a reboot
+  child. Optional shutdown_flag behavior also needs verification; it may
+  affect poweroff versus restart. No shutdown fix installed.
+- [PR2 trackpad](https://github.com/Sowyu/m5-azahi/pull/2), head
+  `921db7bb0a7bd814f53e9c677ef6494417801b47`: noted, not reviewed.
+- [PR1 audit](https://github.com/Sowyu/m5-azahi/pull/1): relevant USB
+  sections reviewed. Findings are hypotheses until validated; not all 300
+  claims are confirmed. Previously confirmed input bounds/rearm fixes are
+  built/tested but NOT installed. Do not use the proposed ACK mutex fix
+  that conflicts with the sender's wait while holding that mutex.
+- PR2/3/4 branch ancestry predates the privacy history rewrite. Do not merge
+  those histories into cleaned main. Review tip changes in private and
+  reapply only reviewed/redacted changes to clean ancestry with attribution.
+  No PR was merged or externally commented on during these latest tests.
+
+## Helper and service semantics that matter
+
+`start-native-usb.sh` checks exact kernel/model/Linux root and bundle hashes.
+With all three USB modules already loaded plus a right-port root hub, it
+preserves them and returns USB_ALREADY_READY. This is NOT a hotplug repair
+or proof of a phone/network connection. Partial load is deliberately refused.
+
+HPM modes:
+
+- `status`: controller power and FIFO inspection; no logical HPM snapshot.
+- `probe`: bus WAKEUP plus logical selector/read transactions; not electrically
+  read-only, but does not issue SSPS or power/data-role swap tasks.
+- `awake`: additionally permits the tightly guarded SSPS(S0) task only from
+  the known disconnected state-7 tuple. It is not a generic recovery switch.
+
+Transport/ambiguous task failures latch and pin the helper. Do not unload
+or retry a poisoned instance, drain/reset queues, or remove its protections.
+The most recent refresh was of this healthy diagnostic helper only; that
+does not authorize live USB/PHY/DWC3 removal.
+
+## Resume and completion criteria
+
+1. Preserve the current Linux session and phone state. Confirm the user is
+   ready before any physical action; documentation request paused testing.
+2. Read this latest section before historical “verified” checkpoints.
+   Do not request all already-recorded screenshots again.
+3. Last native reverse SSH attempt was refused. Check the private controller
+   handoff for pinned access details if access becomes available; do not
+   claim direct access exists just because SSH services were installed.
+4. Focus on current phone function/role disagreement using existing evidence.
+   No validated next driver patch or role-swap command has been prepared.
+   Any new experiment must state its hypothesis, expected observation and
+   rollback rather than repeating known-failed initialization.
+5. Before declaring recovery, verify USB network-class binding, real network
+   interface, DHCP/default route, DNS, synchronized time and certificate-
+   validated HTTPS through that interface. Use bounded requests.
+6. Then verify repeated connection/boot behavior, preserve logs privately,
+   and explicitly decide whether to restore or replace automatic USB startup.
+   `systemctl enable azahi-usb` restores the old boot enablement but does
+   not fix its reliability; do not run it now as a networking repair.
+7. Confirm dedicated SSH access works, so future work avoids manual typing.
+   Native Codex still needs installation and authentication after networking.
+8. Shutdown remains separate. `sync` flushes filesystem writes; it does not
+   implement hardware poweroff or prove subsequent shutdown cannot hang.
+   Reaching poweroff.target alone is not proof every kernel shutdown callback
+   finished or a guarantee a hard power cut is safe.
+
+## Primary references
+
+- [Exact ADB interface identifiers in AOSP](https://android.googlesource.com/platform/system/core/+/android10-release/adb/adb.h).
+- [AOSP USB data-role preference controller](https://android.googlesource.com/platform/packages/apps/Settings/+/main/src/com/android/settings/connecteddevice/usb/UsbDetailsDataRoleController.java).
+- [Linux USB error codes](https://docs.kernel.org/driver-api/usb/error-codes.html).
+- [Linux USB power management](https://docs.kernel.org/driver-api/usb/power-management.html).
+
+Detailed local source paths: `usb-driver/start-native-usb.sh`,
+`usb-driver/azahi-usb.service`, `usb-driver/dwc3-apple-t6050.c`,
+`usb-driver/phy-apple-t6050-usb2.c`,
+`usb-driver/pd-backport/hpm-once.c`, `hpm-awake.h` and the pinned tipd
+headers under that directory. Exact kernel/build/private fixture locations
+remain in the private workspace and are intentionally absent from public
+reproduction claims.
+
+
+---
+
+The remainder is historical. Its earlier successful-boot descriptions do
+not override the current disconnected state above.
+
+## Historical baseline: v7 cold boot verified; audit repairs in progress
+
+At this earlier checkpoint, one v7 cold
 boot was verified: simpledrm 3024x1964 at 60 Hz, user-selected 175% scaling
 persisted, root on SSD Btrfs, USB tethering and pinned SSH active, and
 interface-bound certificate-validated HTTPS returned 200. No APFS mounts.
