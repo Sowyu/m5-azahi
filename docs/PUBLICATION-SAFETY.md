@@ -58,6 +58,13 @@ no log, boot image or identity receipt was added.
 
 ## Limits
 
+The subsequent PD feasibility audit explicitly enrolled ten source/provenance
+paths under `usb-driver/pd-backport`: README, host-only compile checker, source
+checksum manifest, and seven verbatim files from a pinned public Asahi commit.
+The independent installed allowlist was backed up before adding only those
+paths. No objects, loadable modules, raw diagnostics or hardware dumps were
+enrolled. Existing content and complete-history checks remain enabled.
+
 These controls make accidental publication much harder, not impossible.
 A user with control of Git can disable hooks or use another upload route;
 GitHub web/API uploads are outside local hooks. Pattern scanners cannot detect

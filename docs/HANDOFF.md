@@ -1,5 +1,25 @@
 # Resume safely
 
+## Latest: SSD copy verified; PD backport audit
+
+User reports four checksum OKs for /root/usb-candidate after the guarded
+new-directory copy from /run. The original candidate is now preserved on
+Linux's SSD; this is NOT a persistent boot fix. Do not reboot or unload.
+
+New host-only feasibility check lives under usb-driver/pd-backport. Seven
+unmodified, hash-pinned Asahi source/config files were fetched. Against the
+exact target headers, SPMI transport and trace compile; shared core fails on
+15 diagnostics for newer Type-C/Thunderbolt switch APIs. No compatibility
+stubs, loadable module, target writes or delivery changes. Modpost not reached.
+
+Saved Linux DTB contains no SPMI/USB-PD nodes. Saved right-port HPM interrupt
+types are 0/2/3 for IRQs 11/17/19; upstream needs four named IRQs. Its example's
+select IRQ13 remains unverified for this target. Probe issues WAKEUP and core
+changes S0/interrupt masks, so a PD probe is not a read-only test.
+
+Next native read-only inventory: ls -l /sys/bus/spmi/devices /sys/class/typec
+Send exact output, including missing-directory messages. No reboot needed.
+
 ## Latest: live test timed out before phone networking
 
 The next user photo shows the runner's failure: no unique right-port USB
