@@ -1,5 +1,28 @@
 # Resume safely
 
+## Latest: live test timed out before phone networking
+
+The next user photo shows the runner's failure: no unique right-port USB
+network interface. Kernel messages at about 590.5 seconds show PHY host init
+completion, xHCI USB2/USB3 root hubs (Linux IDs 1d6b:0002 and 1d6b:0003),
+one port on each, and "host mode up (state 2)". These are controller root hubs,
+not the phone. No child-device attach or descriptor error appears in the
+displayed tail. The shell prompt returned; no kernel hang is shown.
+
+The user previously reported no phone charging and grey tethering. Whether
+the requested reconnect was performed is not separately confirmed. VBUS /
+Type-C role handling remains a hypothesis, not an electrical measurement;
+cable and PHY issues remain possible. No networking, DHCP or HTTPS success.
+Do not rerun or unload the applied overlay. Persistent boot remains bad v4;
+this session used the v6 RAM correction. No reboot requested.
+
+Next: preserve the checked courier directory from /run to a fresh directory
+under /root on the already verified Linux SSD root, then verify its manifest.
+Do not overwrite an existing destination or touch daily macOS. Copy outcome
+is pending. Subsequent engineering should audit the missing SN201202x SPMI
+transport/PD integration, especially actual target IRQ mapping; upstream probe
+issues a wake command and is not a read-only diagnostic.
+
 ## Immediate state
 
 LATEST LIVE PHOTO: the runner reached the right-controller root hub
