@@ -5,6 +5,27 @@ contain superseded plans; the state below takes precedence.
 
 ## Latest user report and expanded publication
 
+V6 RAM HANDOFF SENT: after the user restarted into the installed v4 fallback
+proxy, a fresh read-only identification found changed RAM addresses. The new
+session was verified rather than reusing the old pins. A guarded v6 test checked
+the old header/function and all 91,819,821 payload bytes before any replacement.
+All 70,698,084 new initrd bytes were written and read back in 64 KiB chunks,
+then the corrected header was published last. The original loader returned
+success, expected next-stage pointers were verified, and the Linux handoff was
+sent. No persistent boot image or daily macOS partition was changed.
+
+The target desktop/courier result is still pending. Next Konsole command:
+
+```sh
+ls /run/azahi-usb-20260913
+```
+
+No USB candidate driver has been loaded yet. The installed boot object remains
+v4 and needs a separate permanent correction; do not casually reboot.
+`proxy-test-v6.py` is published as a session-pinned reference with its private
+serial identifier removed. Do not run it on a different session. Its one new
+path was explicitly reviewed/enrolled; publication hooks remain enabled.
+
 LATEST CORRECTION READY (not installed): `/run/initramfs` contained only `log`,
 so the old courier assets were not available for in-place recovery.
 `boot-stage-v2.sh` now uses explicit static BusyBox mktemp/cp/sha256sum/mv and
