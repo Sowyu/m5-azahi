@@ -367,3 +367,6 @@ usb-driver/pd-backport/spmi4-transport.h
 usb-driver/pd-backport/spmi4-controller.c
 usb-driver/pd-backport/test-spmi4.c
 usb-driver/pd-backport/test-spmi4.sh
+usb-driver/pd-backport/spmi4-host-bridge.c
+usb-driver/pd-backport/proxy-hpm.py
+usb-driver/pd-backport/test-proxy-hpm.py
