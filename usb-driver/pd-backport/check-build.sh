@@ -1,13 +1,13 @@
 #!/bin/bash
 # HOST ONLY: compile a pinned Asahi PD driver against our exact
-# target headers. Produces objects and a modpost report, NEVER a loadable .ko,
-# overlay, installer, firmware, target access, or delivery bundle.
+# target headers. Most variants produce only objects and a modpost report;
+# hpm-once also links a loadable .ko. No target access or installation occurs.
 set -euo pipefail
 cd "$(dirname "$0")"
 variant=${1:-upstream}
 case "$variant" in
-  upstream|without-tbt-switch|controller) ;;
-  *) echo 'Usage: bash check-build.sh [upstream|without-tbt-switch|controller]' >&2; exit 2 ;;
+  upstream|without-tbt-switch|controller|hpm-once) ;;
+  *) echo 'Usage: bash check-build.sh [upstream|without-tbt-switch|controller|hpm-once]' >&2; exit 2 ;;
 esac
 test "$#" -le 1 || exit 2
 root=$(cd ../.. && pwd)
@@ -31,6 +31,11 @@ if [[ "$variant" = controller ]]; then
   units=(controller)
   cp spmi4-controller.c "$source_dir/controller.c"
   cp spmi4-transport.h "$source_dir/"
+fi
+if [[ "$variant" = hpm-once ]]; then
+  module=azahi_hpm_once
+  units=(hpm-once)
+  cp hpm-once.c hpm-awake.h spmi4-transport.h "$source_dir/"
 fi
 if [[ "$variant" = without-tbt-switch ]]; then
   patch --batch --fuzz=0 -p1 -d "$source_dir" -i "$PWD/no-tbt-switch.patch"
@@ -71,4 +76,12 @@ test "$failed" = 0 || exit 1
 "$ld" -m aarch64elf -r -o "$output/$module.o" "${objects[@]}"
 "$modpost" -M -e -i "$headers/Module.symvers" \
   -o "$output/Module.symvers" "$output/$module.o"
-echo 'Compile and modpost passed. No loadable module created; hardware remains untested.'
+if [[ "$variant" = hpm-once ]]; then
+  "$cc" "${flags[@]}" -c "$headers/scripts/module-common.c" -o "$output/module-common.o"
+  "$cc" "${flags[@]}" -c "$output/$module.mod.c" -o "$output/$module.mod.o"
+  "$ld" -m aarch64elf -r -T "$headers/scripts/module.lds" -o "$output/$module.ko" \
+    "$output/$module.o" "$output/$module.mod.o" "$output/module-common.o"
+  echo "HPM_ONLY_CANDIDATE $output/$module.ko; default status only; not installed"
+else
+  echo 'Compile and modpost passed. No loadable module created; hardware remains untested.'
+fi

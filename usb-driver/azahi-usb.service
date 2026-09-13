@@ -1,0 +1,15 @@
+[Unit]
+Description=Guarded J714s right-port USB startup
+After=local-fs.target NetworkManager.service
+Before=azahi-native-tunnel.service
+ConditionPathExists=/etc/azahi-usb-root
+
+[Service]
+Type=oneshot
+ExecStart=/opt/azahi-usb/start-native-usb.sh
+RemainAfterExit=yes
+TimeoutStartSec=45
+# No ExecStop: the applied overlay cannot be safely removed.
+
+[Install]
+WantedBy=multi-user.target

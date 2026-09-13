@@ -20,6 +20,7 @@ import time
 import asyncssh
 
 HERE = Path(__file__).resolve().parent
+FORWARD_PORT = 22022  # Fixed in production; isolated tests substitute a free port.
 
 
 def initialize(folder, host, root_uuid):
@@ -101,7 +102,7 @@ class Server(asyncssh.SSHServer):
 
     def server_requested(self, listen_host, listen_port):
         return (self.user == 'tunnel' and self.state.registration is not None and
-                listen_host == '127.0.0.1' and listen_port == 22022)
+                listen_host == '127.0.0.1' and listen_port == FORWARD_PORT)
 
 
 async def process(state, proc):
