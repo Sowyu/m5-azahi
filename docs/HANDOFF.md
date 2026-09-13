@@ -2,6 +2,11 @@
 
 ## Immediate state
 
+NEWEST PHOTO: `initrd-switch-root` journal reports the courier stopped at line11
+because `mktemp` is absent. The hook did run. Fix/test the courier's early-boot
+tool dependencies before building another candidate. Do not ask the user to
+repeat the same log command; no new image or permanent fix has yet been installed.
+
 LATEST: user reports KDE accessible but the courier directory cannot be
 accessed from Konsole. Konsole is a valid target terminal. Host image inspection
 finds the courier hook and assets present; inspect the current boot journal:

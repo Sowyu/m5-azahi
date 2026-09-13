@@ -23,6 +23,7 @@ a daily-use machine. Never use the reference disk geometry on another SSD.**
 | Shutdown | Can stall at poweroff.target; final power-off unresolved |
 
 Read [PROGRESS.md](PROGRESS.md) and [the handoff](docs/HANDOFF.md) before continuing.
+Publication is guarded by [default-deny ignores and index/history checks](docs/PUBLICATION-SAFETY.md).
 
 ## Contents
 
