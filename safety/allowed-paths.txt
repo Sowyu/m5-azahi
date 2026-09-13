@@ -345,3 +345,8 @@ usb-driver/vendor/dwc3/gadget.h
 usb-driver/vendor/dwc3/glue.h
 usb-driver/vendor/dwc3/io.h
 usb-driver/vendor/dwc3/trace.h
+usb-driver/boot-stage-v2.sh
+usb-driver/build-transfer-v6.py
+usb-driver/courier-vm-init.sh
+usb-driver/test-courier-vm.py
+usb-driver/test-transfer-v6.py

@@ -5,6 +5,36 @@ contain superseded plans; the state below takes precedence.
 
 ## Latest user report and expanded publication
 
+LATEST CORRECTION READY (not installed): `/run/initramfs` contained only `log`,
+so the old courier assets were not available for in-place recovery.
+`boot-stage-v2.sh` now uses explicit static BusyBox mktemp/cp/sha256sum/mv and
+absolute findmnt, with PATH deliberately set to `/nonexistent`.
+
+The new v6 image preserves the exact 70,698,084-byte initrd and 92,651,520-byte
+aligned outer image, original loader/kernel/DT/boot arguments, all original CPIO
+bytes, and unchanged driver/runner assets. Only the courier script changes.
+Five offline image invariance/corruption tests pass.
+
+A host-local QEMU ARM64 VM used the exact pinned kernel, Bash, findmnt and
+BusyBox from the v5 initrd, with no disks, network or USB passthrough. It:
+
+- reproduced the old `mktemp: command not found` failure;
+- ran the corrected courier successfully despite empty PATH;
+- verified all delivered checksums;
+- preserved an existing destination and rejected corrupt payloads, source
+  symlinks and a non-tmpfs destination mount.
+
+All six test markers and `COURIER_VM_ALL_PASS` were observed. An initial test
+harness archive-encoding mistake was caught in the VM and corrected before
+the successful run. This tests courier userspace, not M5 USB hardware.
+
+V6 private image SHA256:
+`324822de14a43ab164d0ec6257d50d9dd6be1b17fd063faf24b0d571e41096ee`.
+No boot image or firmware is uploaded. No target reboot or persistent write
+has occurred in this correction. Next: controlled restart into the existing
+v4 fallback proxy, freshly identify the session, then a guarded v6 RAM test.
+Do not reuse the previous live-session addresses without re-verification.
+
 NEW PHOTO: the current boot journal explicitly reports
 `/azahi-usb-stage.sh: line 11: mktemp: command not found`.
 The initrd courier did execute but stopped before creating its staging directory.
