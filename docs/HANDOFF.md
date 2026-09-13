@@ -7,6 +7,10 @@ a new helper payload. This is the first reported cold boot of installed v6.
 However, the phone does not charge and USB tethering is unavailable. The user
 also tried the minimal driver command; its detailed result is not yet known.
 
+Ranked causes, the evidence for each and the exact commands to tell them
+apart are in [the cold-boot USB note](usb-tethering-coldboot.md). Read it
+before running anything on the machine.
+
 Native SSH is currently unreachable (reverse-forward listener absent).
 Prior working-boot tethering/SSH evidence remains valid, but automatic USB
 initialization across cold boot is NOT working. Do not call this a successful

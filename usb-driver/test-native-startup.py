@@ -125,5 +125,21 @@ insmod() {
         self.assertEqual(sum('insmod' in c for c in calls), 4)
         self.assertFalse(any('rmmod' in c for c in calls))
 
+    def test_optional_net_module_missing_still_loads(self):
+        code, calls, out = self.case(fail_module='rndis_host')
+        self.assertEqual(code, 0, out)
+        self.assertIn('OPTIONAL_MODULE_MISSING: rndis_host', out)
+        self.assertIn('USB_HOST_READY', out)
+        self.assertEqual(calls[-1], 'insmod ./dwc3-apple-t6050.ko')
+
+    def test_every_failure_names_its_step_and_hpm_tuple(self):
+        for kwargs in ({'wrong_root': True}, {'hash_bad': True}, {'refusal': True},
+                       {'fault': True}, {'fail_module': 'dwc3'}, {'no_hub': True},
+                       {'modules': MODULES}, {'hpm': (0, 'N', 'N')}):
+            code, _, out = self.case(**kwargs)
+            self.assertNotEqual(code, 0, out)
+            self.assertTrue('STEP_FAILED' in out or 'HPM_NOT_READY' in out, out)
+            self.assertIn('HPM_TUPLE', out)
+
 
 if __name__ == '__main__': unittest.main()

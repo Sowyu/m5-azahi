@@ -1,10 +1,24 @@
 #!/bin/bash
 # Exact-kernel J714s startup. Never tears down the applied USB overlay.
-set -euo pipefail
+set -Eeuo pipefail
+params=/sys/module/azahi_hpm_once/parameters
+# Every exit must name its step. Without this the cold-boot journal cannot
+# tell an identity refusal from a failed HPM insmod from a driver failure.
+hpm_tuple() {
+    local name line=
+    [[ -d $params ]] || { echo 'HPM_TUPLE: azahi_hpm_once not loaded'; return 0; }
+    for name in result ready poisoned; do
+        if [[ -r $params/$name ]]; then line+=" $name=$(< "$params/$name")"
+        else line+=" $name=?"; fi
+    done
+    echo "HPM_TUPLE:$line"
+}
+die() { echo "STEP_FAILED: $1"; hpm_tuple; exit 1; }
+trap 'echo "STEP_FAILED: line $LINENO: $BASH_COMMAND"; hpm_tuple' ERR
 [[ $(id -u) = 0 && $(uname -r) = '7.0.13-400.asahi.fc44.aarch64+16k' ]]
 IFS= read -r expected_uuid < /etc/azahi-usb-root
-[[ $(findmnt -n -o UUID /) = "$expected_uuid" ]] || { echo 'Wrong Linux root'; exit 1; }
-grep -zFxq 'apple,j714s' /proc/device-tree/compatible || exit 1
+[[ $(findmnt -n -o UUID /) = "$expected_uuid" ]] || die 'Linux root UUID does not match /etc/azahi-usb-root'
+grep -zFxq 'apple,j714s' /proc/device-tree/compatible || die 'device tree is not apple,j714s'
 cd /opt/azahi-usb
 sha256sum -c SHA256SUMS
 count=0
@@ -18,12 +32,10 @@ if [[ $count = 3 ]]; then
             exit 0
         }
     done
-    echo 'Existing modules without right-port root hub; no reload'
-    exit 1
+    die 'existing USB modules without a right-port root hub; no reload'
 fi
-[[ $count = 0 ]] || { echo 'Partial USB load; no retry or teardown'; exit 1; }
+[[ $count = 0 ]] || die "partial USB load ($count of 3 modules); no retry or teardown"
 
-params=/sys/module/azahi_hpm_once/parameters
 if [[ -d $params && $(< "$params/result") = -11 && $(< "$params/poisoned") = N ]]; then
     # A previous clean refusal occurred before any SSPS task. An explicit
     # service restart may recheck after unplugging. Never recover a bus fault.
@@ -32,12 +44,20 @@ fi
 if [[ ! -d $params ]]; then
     insmod ./azahi_hpm_once.ko mode=awake
 fi
+hpm_tuple
 if [[ $(< "$params/result") != 0 || $(< "$params/ready") != Y || $(< "$params/poisoned") != N ]]; then
-    echo 'HPM_NOT_READY: no USB load. If clean state-7 refusal, unplug phone and restart azahi-usb.'
+    echo 'HPM_NOT_READY: no USB load. If clean state-7 refusal (result=-11 poisoned=N),'
+    echo 'unplug the phone and restart azahi-usb. A poisoned tuple needs a reboot.'
     exit 1
 fi
-for module in apple-dart dwc3 xhci-plat-hcd usbnet cdc_ncm cdc_ether rndis_host; do
-    modprobe "$module"
+for module in apple-dart dwc3 xhci-plat-hcd usbnet cdc_ncm; do
+    modprobe "$module" || die "modprobe $module (required for the host stack or NCM tethering)"
+done
+# ponytail: cdc_ether/rndis_host only matter for an RNDIS-mode phone, so a
+# missing one must not abort host bring-up. Make them required again if a
+# phone that offers only RNDIS becomes the tether this machine depends on.
+for module in cdc_ether rndis_host; do
+    modprobe "$module" || echo "OPTIONAL_MODULE_MISSING: $module (RNDIS tethering unavailable)"
 done
 insmod ./phy-apple-t6050-usb2.ko
 insmod ./azahi-usb-overlay.ko variant=minimal
@@ -51,5 +71,4 @@ for ((i=0; i<10; i++)); do
     done
     sleep 1
 done
-echo 'No right-port root hub; no teardown or retry'
-exit 1
+die 'no right-port root hub 10 s after the three insmods; no teardown or retry'

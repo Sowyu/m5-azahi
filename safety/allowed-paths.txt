@@ -8,6 +8,7 @@ docs/PROVENANCE.md
 docs/PUBLICATION-SAFETY.md
 docs/PUBLICATION.md
 docs/research-archive-manifest.json
+docs/usb-tethering-coldboot.md
 input-driver/README.md
 input-driver/build-module.sh
 input-driver/dockchannel-hid.c
