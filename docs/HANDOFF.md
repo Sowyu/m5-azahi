@@ -1,6 +1,32 @@
 # Resume safely
 
-## Latest: certificate-validated HTTPS over USB confirmed
+## Latest: native remote-access relay prepared; user bootstrap pending
+
+User approved secure remote access and automatic boot/network startup.
+Phone is confirmed on the same Wi-Fi as the helper. A dedicated SSH relay
+has been prepared, with task-specific keys and a fingerprint-verified,
+one-use password bootstrap. The native script checks kernel/model/Linux-root
+identity and creates a loopback-only key-authenticated sshd plus a fixed
+reverse tunnel, using unique runtime state and transient systemd services.
+It does not alter global sshd config, existing keys, firewall or boot files.
+
+Four real loopback SSH integration tests pass: wrong credentials/host key,
+one-use bootstrap, arbitrary command and local-forward refusal, exact
+loopback remote-forward restriction, host-key pinning and actual tunnel data.
+Pinned helper-only dependencies are in remote-access/requirements.txt.
+The helper listener is running; no native connection or installation is yet
+verified. The user has the short setup commands and fingerprint. Do not infer
+that simply having internet makes an inbound SSH route available.
+
+Next: verify native connection and fresh read-only inventory; preserve the
+working USB session. Then plan/install native startup components with scoped
+backups. Persistent loader correction and HPM initialization are still
+unfinished; no reboot, power cycle or macOS write was performed here.
+Generated keys, passwords, setup payloads and private host addresses must
+never be exported. Only the five reviewed remote-access source files were
+enrolled in both publication allowlists; all privacy checks remain enabled.
+
+## Earlier: certificate-validated HTTPS over USB confirmed
 
 User screen evidence shows chronyd restart, chronyc makestep returning
 200 OK, and UTC date corrected to September 13, 2026. A subsequent curl

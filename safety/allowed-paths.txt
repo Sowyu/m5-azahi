@@ -370,3 +370,8 @@ usb-driver/pd-backport/test-spmi4.sh
 usb-driver/pd-backport/spmi4-host-bridge.c
 usb-driver/pd-backport/proxy-hpm.py
 usb-driver/pd-backport/test-proxy-hpm.py
+remote-access/README.md
+remote-access/bootstrap.py
+remote-access/relay.py
+remote-access/requirements.txt
+remote-access/test-relay.py
