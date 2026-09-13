@@ -109,6 +109,19 @@ insmod() {
             self.assertNotEqual(code, 0)
             self.assertEqual(calls, ['checksum', 'insmod ./azahi_hpm_once.ko mode=awake'])
 
+    def test_only_clean_refusal_asks_for_restart(self):
+        code, _, out = self.case(refusal=True)
+        self.assertEqual(code, 75, out)
+        self.assertIn('HPM_CLEAN_REFUSAL', out)
+        for kwargs in ({'fault': True}, {'hpm': (0, 'N', 'N')}, {'hpm': (-11, 'N', 'Y')},
+                       {'wrong_root': True}, {'no_hub': True}):
+            code, _, out = self.case(**kwargs)
+            self.assertNotEqual(code, 75, out)
+            self.assertNotEqual(code, 0, out)
+        unit = Path(__file__).with_name('azahi-usb.service').read_text()
+        self.assertIn('RestartForceExitStatus=75', unit)
+        self.assertIn('StartLimitIntervalSec=0', unit)
+
     def test_identity_hash_guards(self):
         for kwargs in ({'wrong_root': True}, {'hash_bad': True}):
             code, calls, _ = self.case(**kwargs)
@@ -138,7 +151,8 @@ insmod() {
                        {'modules': MODULES}, {'hpm': (0, 'N', 'N')}):
             code, _, out = self.case(**kwargs)
             self.assertNotEqual(code, 0, out)
-            self.assertTrue('STEP_FAILED' in out or 'HPM_NOT_READY' in out, out)
+            self.assertTrue(any(m in out for m in ('STEP_FAILED', 'HPM_NOT_READY',
+                                                    'HPM_CLEAN_REFUSAL')), out)
             self.assertIn('HPM_TUPLE', out)
 
 

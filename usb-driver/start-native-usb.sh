@@ -45,9 +45,16 @@ if [[ ! -d $params ]]; then
     insmod ./azahi_hpm_once.ko mode=awake
 fi
 hpm_tuple
+if [[ $(< "$params/result") = -11 && $(< "$params/poisoned") = N ]]; then
+    # Clean refusal: the port was not empty when the wake ran, nothing was
+    # written. Exit 75 so the unit's RestartForceExitStatus retries every
+    # RestartSec until the phone is unplugged and the wake succeeds. The
+    # status read on each retry is the same read-only probe the guard does.
+    echo 'HPM_CLEAN_REFUSAL: port not empty at wake time; unplug the phone, retry is automatic.'
+    exit 75
+fi
 if [[ $(< "$params/result") != 0 || $(< "$params/ready") != Y || $(< "$params/poisoned") != N ]]; then
-    echo 'HPM_NOT_READY: no USB load. If clean state-7 refusal (result=-11 poisoned=N),'
-    echo 'unplug the phone and restart azahi-usb. A poisoned tuple needs a reboot.'
+    echo 'HPM_NOT_READY: no USB load. A poisoned or faulted tuple needs a reboot; no retry.'
     exit 1
 fi
 for module in apple-dart dwc3 xhci-plat-hcd usbnet cdc_ncm; do

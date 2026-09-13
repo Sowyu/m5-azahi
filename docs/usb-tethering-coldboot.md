@@ -189,13 +189,27 @@ Compare the five printed values against the ones from the working boot. Any
 domain whose actual field is not `0xf` on cold boot but was on the proxy boot
 is the missing loader step.
 
+## What the phone shows when this happens
+
+Android USB preferences with "USB controlled by: This device" selected and
+"Connected device: Couldn't switch" underneath. The phone only takes the host
+role when nothing on the other end presents as a host. That is the cold-boot
+refusal seen from the phone side: the Mac never became a host, so the phone
+did, and a data-role swap is then rejected because no PD stack on the Mac
+answers it. Unplugging the phone lets the retry above wake the controller with
+an empty port; plugging back in after `USB_HOST_READY` gives the Mac the host
+role at attach. On the phone pick "Connected device" first, then tethering.
+
 ## Deliberately not changed
 
-- No `Restart=on-failure` on the unit. A restart can only help the clean-refusal
-  case, and only after a human unplugs the port; every other case either
-  repeats identically or is latched. systemd cannot select on that distinction,
-  and an automatic retry loop against a PD controller in an unknown state is
-  exactly what the existing guards refuse to do.
+- No blanket `Restart=on-failure`. A restart only helps the clean-refusal case;
+  every other case either repeats identically or is latched. The script now
+  exits 75 for exactly that case and the unit sets `RestartForceExitStatus=75`
+  with `RestartSec=10` and no start limit, so the wake is retried every ten
+  seconds until the port is empty and it succeeds. Each retry is the same
+  read-only status probe the guard already does; nothing is written on a
+  refusal. Bus faults, poison latches and identity mismatches still exit 1 and
+  stay down.
 - No change to `hpm-once.c`, `hpm-awake.h` or the overlay's power and DWC3
   preflight. The pinned tuple may well be too narrow for a cold boot, but
   widening it needs a fresh attended observation of the real cold-boot tuple,

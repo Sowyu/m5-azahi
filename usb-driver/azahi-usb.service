@@ -1,5 +1,6 @@
 [Unit]
 Description=Guarded J714s right-port USB startup
+StartLimitIntervalSec=0
 After=local-fs.target NetworkManager.service
 Before=azahi-native-tunnel.service
 ConditionPathExists=/etc/azahi-usb-root
@@ -9,6 +10,12 @@ Type=oneshot
 ExecStart=/opt/azahi-usb/start-native-usb.sh
 RemainAfterExit=yes
 TimeoutStartSec=45
+# Exit 75 is the clean "port not empty at wake time" refusal. Retry it
+# until the phone is unplugged; every other failure stays down (bus fault,
+# poison latch, identity mismatch) because a retry cannot help and may hurt.
+Restart=no
+RestartForceExitStatus=75
+RestartSec=10
 # No ExecStop: the applied overlay cannot be safely removed.
 
 [Install]
