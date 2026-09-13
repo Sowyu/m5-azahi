@@ -5,6 +5,19 @@ contain superseded plans; the state below takes precedence.
 
 ## Latest user report and expanded publication
 
+FIRST LIVE RESULT: user photo shows all stock dependency loads and the three
+candidate insmod commands completing, followed by the expected right-controller
+root-hub path under `382280000.usb/xhci-hcd.0.auto/usb1`. The live host test has
+therefore reached a right-port root hub. It has not established phone enumeration,
+a network interface, DHCP or HTTPS. The photo was taken while the script waited.
+
+User reports the Nothing Phone 3a Pro still has tethering greyed out and is not
+charging. VBUS/Type-C role negotiation is a leading hypothesis, not a measured
+diagnosis; cable/PHY problems remain possible. No reboot, unload or retry.
+Let the bounded wait end, try one phone unplug/replug, then inspect the newest
+kernel messages. An applied overlay may now be pinned; preserve the running
+session. No automatic rollback/unload is safe here.
+
 FIRST ATTENDED LIVE TEST NEXT: user confirms the phone is connected and its
 USB tethering toggle is greyed out. The host controller has not yet been enabled,
 so this alone is not evidence of a phone/cable failure. All four delivered
