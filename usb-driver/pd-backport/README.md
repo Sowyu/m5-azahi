@@ -5,6 +5,16 @@ No loadable PD module, overlay or installer. The separate host proxy diagnostic
 has now performed attended hardware tests, detailed below.
 The existing three-module USB candidate and delivery manifest are unchanged.
 
+Latest native result: after the attended HPM awake task and v6 RAM boot,
+the candidate exposed right-port network interface enu1. NetworkManager
+activation and DHCP succeeded, external DNS/ping worked, and Firefox loaded
+Google search results. The user confirms phone tethering is enabled.
+USB tethering therefore works for this boot. The runner's interface-bound
+HTTPS check failed with curl60, "certificate is not yet valid"; incorrect
+Linux time is suspected and still needs verification/correction. Do not use
+insecure TLS flags or rerun driver loading. Persistent boot/network setup
+is still unfinished, and no native PD module has been installed.
+
 ## Attended proxy diagnostic route
 
 `proxy-hpm.py` now provides a separate pre-Linux test route using the same

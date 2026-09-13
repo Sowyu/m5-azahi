@@ -1,6 +1,30 @@
 # Progress — 2026-09-13
 
-## Latest: system-awake task succeeded; phone charging and host/source confirmed
+## Latest: native USB tethering works; HTTPS clock error remains
+
+User-provided screen evidence shows the preserved candidate loaded on native
+Linux and a unique right-port USB network interface, enu1, was identified.
+NetworkManager activation succeeded and DHCP assigned a private IPv4 address.
+DNS resolution and repeated external ping replies succeeded; Firefox loaded
+Google search results. User confirms USB tethering is enabled on the phone.
+This establishes working native tethering for this boot.
+
+The runner's stricter interface-bound HTTPS test failed with curl error60:
+"certificate is not yet valid", HTTP000. Do not misreport this as HTTPS-test
+success or bypass certificate validation. The previously incorrect Linux
+clock is the leading explanation; correct/synchronize it and rerun only the
+HTTPS check, NOT the driver-loading script. No current target date output has
+yet confirmed the clock diagnosis.
+
+Do not reboot or unload/reload the applied overlay. Permanent boot remains
+bad v4, current Linux used the verified v6 RAM handoff, and HPM awake setup
+was performed from proxy. Network profile is temporary and this is NOT a
+reboot-persistent networking fix. Next: clock/TLS verification, then native
+remote access and deliberate persistent initialization work. Daily macOS
+remains untouched. Photos, private IP/MAC/connection identifiers and raw logs
+are excluded from publication.
+
+## Earlier: system-awake task succeeded; phone charging and host/source confirmed
 
 Cable correlation passed: unplugging only the phone cleared attachment,
 power and data status on the audited right-port HPM. The phone was left
