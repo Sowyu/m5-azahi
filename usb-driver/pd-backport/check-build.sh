@@ -1,9 +1,15 @@
 #!/bin/bash
-# HOST ONLY: compile an unmodified pinned Asahi PD driver against our exact
+# HOST ONLY: compile a pinned Asahi PD driver against our exact
 # target headers. Produces objects and a modpost report, NEVER a loadable .ko,
 # overlay, installer, firmware, target access, or delivery bundle.
 set -euo pipefail
 cd "$(dirname "$0")"
+variant=${1:-upstream}
+case "$variant" in
+  upstream|without-tbt-switch) ;;
+  *) echo 'Usage: bash check-build.sh [upstream|without-tbt-switch]' >&2; exit 2 ;;
+esac
+test "$#" -le 1 || exit 2
 root=$(cd ../.. && pwd)
 headers="$root/input-driver/build/headers/usr/src/kernels/7.0.13-400.asahi.fc44.aarch64+16k"
 cc=/opt/homebrew/opt/llvm/bin/clang
@@ -13,6 +19,15 @@ guard=$(awk '$2 == "TSK_STACK_CANARY" { print $3 }' "$headers/include/generated/
 test -n "$guard"
 (cd vendor && shasum -a 256 -c SHA256SUMS)
 mkdir -p build
+output=$(mktemp -d "$PWD/build/compile-$variant.XXXXXX")
+source_dir="$output/src"
+mkdir "$source_dir"
+cp vendor/tipd/core.c vendor/tipd/spmi.c vendor/tipd/trace.c \
+  vendor/tipd/tps6598x.h vendor/tipd/trace.h "$source_dir/"
+if [[ "$variant" = without-tbt-switch ]]; then
+  patch --batch --fuzz=0 -p1 -d "$source_dir" -i "$PWD/no-tbt-switch.patch"
+fi
+echo "HOST-ONLY build variant: $variant; objects: $output"
 flags=(--target=aarch64-linux-gnu -std=gnu11 -fms-extensions -O2 -g -nostdinc
   -D__KERNEL__ -DMODULE
   -I "$headers/arch/arm64/include" -I "$headers/arch/arm64/include/generated"
@@ -20,7 +35,7 @@ flags=(--target=aarch64-linux-gnu -std=gnu11 -fms-extensions -O2 -g -nostdinc
   -I "$headers/arch/arm64/include/generated/uapi" -I "$headers/include/uapi"
   -I "$headers/include/generated/uapi" -include "$headers/include/linux/kconfig.h"
   -include "$headers/include/linux/compiler_types.h"
-  -I "$PWD/vendor/tipd"
+  -I "$source_dir"
   -mgeneral-regs-only -mno-outline-atomics -mbranch-protection=pac-ret+bti
   -fno-pic -fno-pie -fno-strict-aliasing -fno-common -fshort-wchar
   -fno-asynchronous-unwind-tables -fno-unwind-tables
@@ -35,7 +50,7 @@ flags=(--target=aarch64-linux-gnu -std=gnu11 -fms-extensions -O2 -g -nostdinc
 failed=0
 for unit in core spmi trace; do
   if "$cc" "${flags[@]}" "-DKBUILD_BASENAME=\"$unit\"" \
-    -c "vendor/tipd/$unit.c" -o "build/$unit.o"; then
+    -c "$source_dir/$unit.c" -o "$output/$unit.o"; then
     echo "COMPILE PASS: $unit"
   else
     echo "COMPILE FAIL: $unit" >&2
@@ -43,8 +58,8 @@ for unit in core spmi trace; do
   fi
 done
 test "$failed" = 0 || exit 1
-"$ld" -m aarch64elf -r -o build/azahi-sn201202x-check.o \
-  build/core.o build/spmi.o build/trace.o
+"$ld" -m aarch64elf -r -o "$output/azahi-sn201202x-check.o" \
+  "$output/core.o" "$output/spmi.o" "$output/trace.o"
 "$modpost" -M -e -i "$headers/Module.symvers" \
-  -o build/Module.symvers build/azahi-sn201202x-check.o
+  -o "$output/Module.symvers" "$output/azahi-sn201202x-check.o"
 echo 'Compile and modpost passed. No loadable module created; hardware remains untested.'

@@ -65,6 +65,12 @@ The independent installed allowlist was backed up before adding only those
 paths. No objects, loadable modules, raw diagnostics or hardware dumps were
 enrolled. Existing content and complete-history checks remain enabled.
 
+The generation-4 follow-up separately reviewed and enrolled only
+`usb-driver/pd-backport/audit-spmi4.py` and `no-tbt-switch.patch`, again preserving
+the previous installed allowlist first. The audit contains derived constants
+and fixture hashes, not the private fixtures, images or raw disassembly. The
+patch is against already-public GPL driver sources and is compile-only.
+
 These controls make accidental publication much harder, not impossible.
 A user with control of Git can disable hooks or use another upload route;
 GitHub web/API uploads are outside local hooks. Pattern scanners cannot detect

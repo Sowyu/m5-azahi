@@ -1,5 +1,31 @@
 # Resume safely
 
+## Latest: native inventory and generation-4 controller gap
+
+User reports /sys/class/typec missing and SPMI devices listing "0", interpreted
+as total 0. No registered SPMI peripheral is evidenced. This is not a measured
+VBUS diagnosis and does not establish the physical connection's failure cause.
+
+Host audit confirmed target nub-spmi-a1 is generation 4. Existing 7.0.13
+controller source uses old FIFO offsets and lacks command/IRQ support; both
+Fedora patchsets leave drivers/spmi unchanged. Even the newer pinned Asahi
+IRQ-capable controller retains the old register layout. Do not bind it by
+simply adding a compatible string. Saved Apple initialization confirms gen4
+FIFO offsets 0x200/0x210/0x220, RX-empty bit30, IRQ banks0x400/0x600 stride4.
+Seven hash-pinned offline checks pass; no MMIO or target driver changes.
+
+A separate compile-only compatibility patch removes the newer dedicated
+Thunderbolt-switch hooks, preserving generic Type-C/mux code and unchanged
+SPMI transport. Patched core+transport+trace compile/link and pass modpost;
+unmodified control still fails as expected. No fake-success stubs or loadable
+module. This is NOT a complete USB2-only driver or hardware success.
+
+Next engineering: implement/audit actual generation-4 controller ownership,
+commands, bounded FIFO handling and interrupts (or justified polling); then
+PD role integration and safe delivery. Do not unload current overlay or reboot.
+No new user command is requested. Candidate copy remains verified on Linux SSD;
+persistent boot remains bad v4, current KDE from v6 RAM correction. macOS untouched.
+
 ## Latest: SSD copy verified; PD backport audit
 
 User reports four checksum OKs for /root/usb-candidate after the guarded
