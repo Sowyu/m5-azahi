@@ -383,3 +383,6 @@ usb-driver/start-native-usb.sh
 usb-driver/azahi-usb.service
 usb-driver/install-native-startup.py
 usb-driver/test-native-startup.py
+standalone-loader/build-notch.py
+standalone-loader/test-notch.py
+standalone-loader/m1n1-20260911/src/kboot.c

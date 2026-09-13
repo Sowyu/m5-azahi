@@ -1,5 +1,23 @@
 # Resume safely
 
+## Newest: opt-in full-height framebuffer candidate built, NOT installed
+
+User explicitly overrode local bootloader AI restrictions for this personal
+project. The private candidate retains original firmware framebuffer geometry
+instead of the default 74-row notch crop. It requires an explicit chosen
+azahi,full-height-framebuffer u32 value1 plus exact J714s/T6050/board8 and
+3024x1964, stride12096, depth30/32 checks. Default/mismatch stays cropped.
+No display-register writes or new framebuffer allocation are introduced.
+
+Actual C guard tests pass (10 cases); cross-build and offline image checks
+pass. v7 preserves working v6 args/kernel/initrd; only DT opt-in and loader
+change. Image size92651520; SHA256
+2eaea0bc1503c2ac74a1b11dbb88423675f324a61db3da6db1aa88392672f5ba.
+NOT installed or hardware-tested; v6 remains the booted image. Need a guarded
+backup/test/install workflow pinned to current v6 before requesting Recovery.
+Do not reuse old repair server pins. Full height also exposes the physical
+notch, so desktop notch avoidance is a separate usability consideration.
+
 ## Latest: persistent KDE preferences configured, reboot test pending
 
 The installed launcher created a new /run/kde-clean directory each launch,
