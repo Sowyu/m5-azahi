@@ -1,6 +1,21 @@
 # Progress — 2026-09-13
 
-## Latest: native SSH and guarded startup installed; cold boot still pending
+## Latest: corrected v6 installed and readback verified; cold boot NEXT
+
+The attended Recovery repair passed its fresh snapshot gate and installed
+the corrected v6 loader. The uploaded readback matches the exact previously
+RAM-booted v6 SHA256 and 92651520-byte size. Linux volume identities and
+policy transition passed; final Linux Preboot is read-only. The v3 rollback
+image and pre-install v4 backup remain preserved. No daily macOS change.
+
+Cold boot is NOT yet tested. Next: orderly Recovery shutdown, unplug phone
+and helper data cables (keep charger), select Linux from startup options.
+Wait for KDE before reconnecting the phone and enabling tethering. The native
+USB startup helper needs its first state-7-to-S0 boot test; saved SSH tunnel
+should reconnect once tethering is active and the same helper is reachable.
+Do not send a proxy payload: this test must use the newly installed loader.
+
+## Earlier: native SSH and guarded startup installed; cold boot still pending
 
 USB tethering is verified by direct native SSH: DHCP/DNS and interface-bound,
 certificate-validated HTTPS GET and HEAD succeed. The earlier TLS failure
