@@ -1,0 +1,9 @@
+// Private root-only write experiment, initially disarmed. Not the RO DT ABI.
+#include "t6050-j714s-native-ssd-ro.dts"
+
+&nvme {
+	compatible = "azahi,j714s-nvme-rootguard";
+	azahi,root-partuuid = "PRIVATE-UUID-REMOVED";
+	azahi,root-first-lba = /bits/ 64 <204034123>;
+	azahi,root-end-lba = /bits/ 64 <242798667>;
+};

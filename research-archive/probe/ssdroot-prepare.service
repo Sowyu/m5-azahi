@@ -1,0 +1,18 @@
+[Unit]
+Description=Verify SSD identities and arm fixed root-only write guard
+DefaultDependencies=no
+# Need udev during preparation, not for the lifetime of the mounted root.
+# initrd-udevadm-cleanup-db deliberately stops it before switch-root.
+# Requires would propagate that stop through prepare into sysroot.mount.
+Wants=systemd-udevd.service
+After=systemd-udevd.service systemd-modules-load.service
+Before=sysroot.mount
+OnFailure=emergency.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/bash /ssdroot-prepare.sh
+TimeoutStartSec=120
+StandardOutput=journal+console
+StandardError=journal+console

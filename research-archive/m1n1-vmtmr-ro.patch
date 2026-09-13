@@ -1,0 +1,134 @@
+--- a/src/hv_exc.c
++++ b/src/hv_exc.c
+@@ -5,6 +5,7 @@
+ #include "cpu_regs.h"
+ #include "exception.h"
+ #include "smp.h"
++#include "soc.h"
+ #include "string.h"
+ #include "uart.h"
+ #include "uartproxy.h"
+@@ -22,6 +23,9 @@
+     u64 pmc_irq_mode;
+     u64 exc_entry_pmcr0_cnt;
+     u64 mdscr;
++    /* T6050: IMASK bits we injected into the guest timer CTLs (see hv_update_fiq) */
++    u32 vm_tmr_imask_p;
++    u32 vm_tmr_imask_v;
+ } ALIGNED(64);
+ 
+ struct hv_pcpu_data pcpu[MAX_CPUS];
+@@ -146,23 +150,62 @@
+     stolen_time -= (u64)time;
+ }
+ 
++/*
++ * T6050 (Sotra): SYS_IMP_APL_VM_TMR_FIQ_ENA_EL2 is read-only — MRS works,
++ * MSR takes an UNDEF (ESR EC=0) at EL2. Its reset value is 0xf (all FIQ
++ * delivery enabled), so guest timer FIQs still reach EL2; what we lose is
++ * the ability to *mask* a pending guest timer while the guest handles the
++ * injected vFIQ. Without masking, the still-asserted physical FIQ retriggers
++ * into EL2 on every eret and the guest livelocks at its first timer tick.
++ *
++ * Workaround: mask by injecting CNTx_CTL_IMASK into the guest timer's EL02
++ * CTL register instead (architectural, kills the FIQ output just as well),
++ * and hide the injected bit from the guest's trapped CTL reads. All guest
++ * timer sysreg accesses already trap here (CNTHCTL EL1TVT set / EL1PTEN
++ * clear, see hv_init), so the guest never sees a CTL value we didn't show it.
++ */
++static bool vm_tmr_fiq_ena_ro(void)
++{
++    return chip_id == T6050 || chip_id == T6051;
++}
++
++#define HV_VM_TMR_UPDATE(ctl_reg, flag)                                                            \
++    ({                                                                                             \
++        u64 ctl = mrs(ctl_reg);                                                                    \
++        u64 gctl = PERCPU(flag) ? ctl & ~CNTx_CTL_IMASK : ctl;                                     \
++        bool pend = gctl == (CNTx_CTL_ISTATUS | CNTx_CTL_ENABLE);                                  \
++        if (pend && !(ctl & CNTx_CTL_IMASK)) {                                                     \
++            msr(ctl_reg, ctl | CNTx_CTL_IMASK);                                                    \
++            PERCPU(flag) = true;                                                                   \
++        } else if (!pend && PERCPU(flag)) {                                                        \
++            msr(ctl_reg, ctl & ~CNTx_CTL_IMASK);                                                   \
++            PERCPU(flag) = false;                                                                  \
++        }                                                                                          \
++        pend;                                                                                      \
++    })
++
+ static void hv_update_fiq(void)
+ {
+     u64 hcr = mrs(HCR_EL2);
+     bool fiq_pending = false;
+ 
+-    if (mrs(CNTP_CTL_EL02) == (CNTx_CTL_ISTATUS | CNTx_CTL_ENABLE)) {
+-        fiq_pending = true;
+-        reg_clr(SYS_IMP_APL_VM_TMR_FIQ_ENA_EL2, VM_TMR_FIQ_ENA_ENA_P);
++    if (vm_tmr_fiq_ena_ro()) {
++        fiq_pending |= HV_VM_TMR_UPDATE(CNTP_CTL_EL02, vm_tmr_imask_p);
++        fiq_pending |= HV_VM_TMR_UPDATE(CNTV_CTL_EL02, vm_tmr_imask_v);
+     } else {
+-        reg_set(SYS_IMP_APL_VM_TMR_FIQ_ENA_EL2, VM_TMR_FIQ_ENA_ENA_P);
+-    }
++        if (mrs(CNTP_CTL_EL02) == (CNTx_CTL_ISTATUS | CNTx_CTL_ENABLE)) {
++            fiq_pending = true;
++            reg_clr(SYS_IMP_APL_VM_TMR_FIQ_ENA_EL2, VM_TMR_FIQ_ENA_ENA_P);
++        } else {
++            reg_set(SYS_IMP_APL_VM_TMR_FIQ_ENA_EL2, VM_TMR_FIQ_ENA_ENA_P);
++        }
+ 
+-    if (mrs(CNTV_CTL_EL02) == (CNTx_CTL_ISTATUS | CNTx_CTL_ENABLE)) {
+-        fiq_pending = true;
+-        reg_clr(SYS_IMP_APL_VM_TMR_FIQ_ENA_EL2, VM_TMR_FIQ_ENA_ENA_V);
+-    } else {
+-        reg_set(SYS_IMP_APL_VM_TMR_FIQ_ENA_EL2, VM_TMR_FIQ_ENA_ENA_V);
++        if (mrs(CNTV_CTL_EL02) == (CNTx_CTL_ISTATUS | CNTx_CTL_ENABLE)) {
++            fiq_pending = true;
++            reg_clr(SYS_IMP_APL_VM_TMR_FIQ_ENA_EL2, VM_TMR_FIQ_ENA_ENA_V);
++        } else {
++            reg_set(SYS_IMP_APL_VM_TMR_FIQ_ENA_EL2, VM_TMR_FIQ_ENA_ENA_V);
++        }
+     }
+ 
+     fiq_pending |= PERCPU(ipi_pending) || PERCPU(pmc_pending);
+@@ -207,10 +250,38 @@
+         SYSREG_PASS(SYS_IMP_APL_CORE_NRG_ACC_DAT);
+         SYSREG_PASS(SYS_IMP_APL_CORE_SRM_NRG_ACC_DAT);
+         /* Architectural timer, for ECV */
+-        SYSREG_MAP(SYS_CNTV_CTL_EL0, SYS_CNTV_CTL_EL02)
++        /*
++         * CTL is virtualized: on T6050 hv_update_fiq() may have injected
++         * CNTx_CTL_IMASK into the hardware register — strip it on reads so the
++         * guest sees a pending, unmasked timer, and drop the injected state on
++         * writes (hv_update_fiq() re-evaluates right after every handled MSR).
++         * On other chips the injected flag is never set and this degenerates
++         * to the plain SYSREG_MAP behavior.
++         */
++        case SYSREG_ISS(SYS_CNTV_CTL_EL0):
++            if (is_read) {
++                u64 v = mrs(CNTV_CTL_EL02);
++                if (PERCPU(vm_tmr_imask_v))
++                    v &= ~CNTx_CTL_IMASK;
++                regs[rt] = v;
++            } else {
++                PERCPU(vm_tmr_imask_v) = false;
++                msr(CNTV_CTL_EL02, regs[rt]);
++            }
++            return true;
++        case SYSREG_ISS(SYS_CNTP_CTL_EL0):
++            if (is_read) {
++                u64 v = mrs(CNTP_CTL_EL02);
++                if (PERCPU(vm_tmr_imask_p))
++                    v &= ~CNTx_CTL_IMASK;
++                regs[rt] = v;
++            } else {
++                PERCPU(vm_tmr_imask_p) = false;
++                msr(CNTP_CTL_EL02, regs[rt]);
++            }
++            return true;
+         SYSREG_MAP(SYS_CNTV_CVAL_EL0, SYS_CNTV_CVAL_EL02)
+         SYSREG_MAP(SYS_CNTV_TVAL_EL0, SYS_CNTV_TVAL_EL02)
+-        SYSREG_MAP(SYS_CNTP_CTL_EL0, SYS_CNTP_CTL_EL02)
+         SYSREG_MAP(SYS_CNTP_CVAL_EL0, SYS_CNTP_CVAL_EL02)
+         SYSREG_MAP(SYS_CNTP_TVAL_EL0, SYS_CNTP_TVAL_EL02)
+         /* Spammy stuff seen on t600x p-cores */

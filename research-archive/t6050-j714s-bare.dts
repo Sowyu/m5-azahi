@@ -1,0 +1,71 @@
+// SPDX-License-Identifier: GPL-2.0+ OR MIT
+/*
+ * Apple MacBook Pro (14-inch, M5 Pro, 2025) — j714sap / Mac17,9
+ *
+ * BARE-METAL variant: no hypervisor, no host Mac.
+ *
+ * Differences from the hv DTB, and why:
+ *  - No earlycon and serial0 stays DISABLED. The s5l UART only exists under
+ *    the hypervisor, where m1n1 traps the uart0 page and emulates it. Bare
+ *    metal that is real, power-gated hardware and touching it is unsafe.
+ *    The ONLY console here is the framebuffer.
+ *  - console=tty0 with fbcon=nodefer, so kernel text lands on the internal
+ *    panel. That is our sole observability bare metal — read it off the
+ *    screen.
+ *  - pmgr tree still deleted. m1n1 has already powered everything we use, and
+ *    genpd's late sweep would power off the display we are printing on.
+ *  - arm64.nomte / arm64.nosme / cpuidle.off=1 kept from the hv config: not
+ *    needed to avoid trap storms here, but they keep the number of variables
+ *    down versus the configuration we know boots.
+ */
+
+/dts-v1/;
+
+#include "t6050-min.dtsi"
+
+/ {
+	compatible = "apple,j714s", "apple,t6050", "apple,arm-platform";
+	model = "Apple MacBook Pro (14-inch, M5 Pro, 2025)";
+
+	chosen {
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+
+		bootargs = "console=tty0 fbcon=nodefer keep_bootcon debug ignore_loglevel maxcpus=1 arm64.nomte arm64.nosme cpuidle.off=1 pd_ignore_unused rd.shell rd.info";
+
+		framebuffer0: framebuffer@0 {
+			compatible = "apple,simple-framebuffer", "simple-framebuffer";
+			reg = <0 0 0 0>; /* filled by m1n1 */
+			/* format properties filled by m1n1 */
+			status = "disabled";
+		};
+	};
+
+	memory@10000000000 {
+		device_type = "memory";
+		reg = <0x100 0 0x10 0>; /* filled by m1n1 */
+	};
+};
+
+&serial0 {
+	status = "disabled";
+	/delete-property/ power-domains;
+};
+
+/* See t6050-j714s-hv.dts for the full reasoning on deleting the pmgr tree. */
+/delete-node/ &pmgr0;
+/delete-node/ &pmgr1;
+/delete-node/ &pmgr2;
+/delete-node/ &pmgr3;
+/delete-node/ &pmgr4;
+/delete-node/ &pmgr5;
+
+&aic { /delete-property/ power-domains; };
+&pinctrl_nub { /delete-property/ power-domains; };
+&pinctrl_ap { /delete-property/ power-domains; };
+&i2c0 { /delete-property/ power-domains; };
+&i2c1 { /delete-property/ power-domains; };
+&i2c2 { /delete-property/ power-domains; };
+&i2c3 { /delete-property/ power-domains; };
+&i2c4 { /delete-property/ power-domains; };

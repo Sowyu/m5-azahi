@@ -1,0 +1,92 @@
+// Local T6050 input bring-up; stock kernel and existing hypervisor image.
+#include "t6050-j714s-hv.dts"
+
+&soc {
+	input_smc_mbox: mbox@28c608000 {
+		compatible = "apple,t6050-asc-mailbox", "apple,asc-mailbox-v4";
+		reg = <0x2 0x8c608000 0 0x4000>;
+		interrupt-parent = <&aic>;
+		interrupts = <0 899 4>, <0 900 4>, <0 901 4>, <0 902 4>;
+		interrupt-names = "send-empty", "send-not-empty", "recv-empty", "recv-not-empty";
+		#mbox-cells = <0>;
+	};
+
+	input_smc: smc@28c600000 {
+		compatible = "apple,t6050-smc", "apple,t8103-smc";
+		reg = <0x2 0x8c600000 0 0x4000>, <0x2 0x8de00000 0 0x140000>;
+		reg-names = "smc", "sram";
+		mboxes = <&input_smc_mbox>;
+		input_smc_gpio: gpio {
+			compatible = "apple,smc-low-gpio";
+			gpio-controller;
+			#gpio-cells = <2>;
+		};
+	};
+
+	mtp: mtp@294600000 {
+		compatible = "apple,t6050-mtp", "apple,mtp", "apple,rtk-helper-asc4";
+		reg = <0x2 0x94600000 0 0x4000>, <0x2 0x94c00000 0 0x100000>;
+		reg-names = "asc", "sram";
+		mboxes = <&mtp_mbox>;
+		iommus = <&mtp_dart 1>;
+		#helper-cells = <0>;
+	};
+
+	mtp_mbox: mbox@294608000 {
+		compatible = "apple,t6050-asc-mailbox", "apple,asc-mailbox-v4";
+		reg = <0x2 0x94608000 0 0x4000>;
+		interrupt-parent = <&aic>;
+		interrupts = <0 676 4>, <0 677 4>, <0 678 4>, <0 679 4>;
+		interrupt-names = "send-empty", "send-not-empty", "recv-empty", "recv-not-empty";
+		#mbox-cells = <0>;
+	};
+
+	mtp_dart: iommu@294800000 {
+		compatible = "apple,t6050-dart", "apple,t8110-dart";
+		reg = <0x2 0x94800000 0 0xc000>;
+		interrupt-parent = <&aic>;
+		interrupts = <0 659 4>;
+		#iommu-cells = <1>;
+		// Match this board's ADT vm-base/vm-size. Unrestricted Linux allocations
+		// land near 4 TiB; MTP stops answering after receiving that first buffer.
+		apple,dma-range = <0x100 0x4000 0 0xffff0000>;
+	};
+
+	mtp_fifo: fifo@294b14000 {
+		compatible = "apple,t6050-dockchannel", "apple,dockchannel";
+		reg = <0x2 0x94b14000 0 0x1000>;
+		reg-names = "irq";
+		interrupt-parent = <&aic>;
+		interrupts = <0 660 4>;
+		ranges = <0 0x2 0x94b28000 0x10000>;
+		nonposted-mmio;
+		#address-cells = <1>;
+		#size-cells = <1>;
+		interrupt-controller;
+		#interrupt-cells = <2>;
+
+		input@0 {
+			compatible = "apple,dockchannel-hid";
+			reg = <0 0x1000>, <0x4000 0x1000>, <0x8000 0x1000>, <0xc000 0x1000>;
+			reg-names = "rmt-config", "rmt-data", "config", "data";
+			iommus = <&mtp_dart 1>;
+			interrupt-parent = <&mtp_fifo>;
+			interrupts = <2 4>, <3 4>;
+			interrupt-names = "tx", "rx";
+			apple,fifo-size = <2048>;
+			apple,helper-cpu = <&mtp>;
+			// ADT pcIO reset commands select SMC bank 1, pins 0x1c/0x1d.
+			// The SMC's gp1c/gp1d keys were confirmed on this hardware.
+			apple,afe-reset-gpios = <&input_smc_gpio 0x1c 1>;
+			apple,stm-reset-gpios = <&input_smc_gpio 0x1d 1>;
+			multi-touch { firmware-name = "apple/tpmtfw-j714s.bin"; };
+			keyboard {
+				hid-country-code = <0>;
+				apple,keyboard-layout-id = <0>;
+			};
+			stm {};
+			actuator {};
+			tp_accel {};
+		};
+	};
+};

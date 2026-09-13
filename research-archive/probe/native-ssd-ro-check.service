@@ -1,0 +1,12 @@
+[Unit]
+Description=Native read-only SSD verification on physical panel
+After=systemd-udev-trigger.service native-input-check.service
+Before=getty@tty1.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash /usr/local/bin/native-ssd-ro-check
+TimeoutStartSec=240
+
+[Install]
+WantedBy=multi-user.target

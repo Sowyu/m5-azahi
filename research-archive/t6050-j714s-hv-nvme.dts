@@ -1,0 +1,301 @@
+// SPDX-License-Identifier: GPL-2.0+ OR MIT
+/*
+ * Apple MacBook Pro (14-inch, M5 Pro, 2025) — j714sap / Mac17,9
+ *
+ * HYPERVISOR variant + INTERNAL NVMe. Booted as an m1n1-hv guest.
+ *
+ * Adds the ANS/NVMe stack so Linux can reach the internal SSD. Every
+ * compatible string here binds to a driver already shipping in the pristine
+ * Image-asahi - confirmed against the running kernel's own match tables:
+ *   nvme-apple  <- apple,t8103-nvme-ans2
+ *   apple-sart  <- apple,t6000-sart
+ *   apple-mbox  <- apple,asc-mailbox-v4
+ * so this needs no kernel patch, only correct addresses.
+ *
+ * Under hv, Linux runs at EL1 and m1n1 stays at EL2. m1n1 traps the whole
+ * uart0 MMIO page (src/hv_vuart.c:144) and emulates a Samsung/s5l UART,
+ * streaming guest console bytes out over the USB proxy link. The real,
+ * power-gated uart0 hardware is never touched - which is why serial0 is
+ * enabled here even though bare-metal boots must keep it disabled.
+ *
+ * uart0 base 0x505200000 and IRQ 1359 verified against adt-real-t6050.bin.
+ * PMGR UART0 is hooked by hv map_essential(), so power-domains is safe.
+ */
+
+/dts-v1/;
+
+#include "t6050-min.dtsi"
+
+/ {
+	compatible = "apple,j714s", "apple,t6050", "apple,arm-platform";
+	model = "Apple MacBook Pro (14-inch, M5 Pro, 2025)";
+
+	aliases {
+		serial0 = &serial0;
+	};
+
+	chosen {
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+
+		stdout-path = "serial0:1500000";
+
+		/*
+		 * earlycon is given explicitly rather than bare, so it works
+		 * even if stdout-path resolution fails - it needs no DT at all.
+		 * maxcpus=1 for the first hv run: one variable at a time.
+		 *
+		 * arm64.nomte + arm64.nosme: M5 exposes MTE and SME; the m1n1 hv
+		 * does not configure HCR.ATA/CPTR for them, so every GCR_EL1 /
+		 * TPIDR2_EL0 access traps to a host Python round-trip - hundreds
+		 * were seen in hv-run2.log, one per context switch. Disabling the
+		 * features removes the storm entirely.
+		 * cpuidle.off=1: keeps cpuidle-apple from writing CYC_OVRD in the
+		 * idle loop - the hv treats bit0 writes as "CPU shutting down"
+		 * (hv/__init__.py handle_msr) and would tear down cpu0.
+		 * pd_ignore_unused: inert while the pmgr nodes are deleted below;
+		 * insurance against the genpd late power-off sweep if they return.
+		 * console=tty0 + fbcon=nodefer: mirror the log to the panel via
+		 * simpledrm (DEFERRED_TAKEOVER=y needs nodefer). ttySAC0 stays
+		 * last, so it remains the preferred console.
+		 */
+		/*
+		 * rd.shell: the Asahi initramfs is dracut and will not find a root
+		 * device (there is no storage driver yet). rd.shell makes it drop to
+		 * an emergency shell and say why, instead of panicking silently.
+		 * We have no keyboard into the guest yet, so this run is about
+		 * READING how far userspace gets, not typing at it.
+		 */
+		bootargs = "earlycon=s5l,0x505200000 console=tty0 console=ttySAC0 keep_bootcon debug ignore_loglevel maxcpus=1 arm64.nomte arm64.nosme cpuidle.off=1 pd_ignore_unused fbcon=nodefer rd.shell rd.info";
+
+		framebuffer0: framebuffer@0 {
+			compatible = "apple,simple-framebuffer", "simple-framebuffer";
+			reg = <0 0 0 0>; /* filled by m1n1 */
+			/* format properties filled by m1n1 */
+			status = "disabled";
+		};
+	};
+
+	/* No /reserved-memory: see t6050-j714s-serial.dts for why. */
+
+	memory@10000000000 {
+		device_type = "memory";
+		reg = <0x100 0 0x10 0>; /* filled by m1n1 */
+	};
+};
+
+&serial0 {
+	status = "okay";
+	/delete-property/ power-domains;
+};
+
+/*
+ * HV GUEST ONLY: remove the entire PMGR power-domain tree.
+ *
+ * Evidence from hv-run2.log: apple-pmgr-pwrstate probed and immediately
+ * issued a power-state write (ps_atc0_common, 0x280600208 <- 0x100000ff,
+ * the driver's ACTIVE+AUTO_ENABLE flush for domains found on). The host's
+ * replay of that write SErrored the machine. Beyond probe-time flushes,
+ * genpd's late power-off sweep would write ~190 non-always-on PS registers
+ * straight to hardware (only 11 are hooked by map_essential), powering off
+ * real devices the HOST is using (dockchannel console, display, SEP, ANS).
+ *
+ * Under the hv every needed device is already powered by the host and the
+ * uart is emulated, so the guest needs no power management at all. Deleting
+ * the providers (and every power-domains reference, else those probes
+ * would -EPROBE_DEFER forever) removes the whole class in one move.
+ * Bare-metal DTBs are unaffected - this file is the only one changed.
+ */
+/delete-node/ &pmgr0;
+/delete-node/ &pmgr1;
+/delete-node/ &pmgr2;
+/delete-node/ &pmgr3;
+/delete-node/ &pmgr4;
+/delete-node/ &pmgr5;
+
+/*
+ * Put back the FOUR power-controllers the SSD needs, and only those.
+ *
+ * The whole pmgr tree is deleted above, so the labels are free to redefine.
+ * A fresh, minimal power-management node is much safer than un-deleting
+ * pmgr0: apple-pmgr-pwrstate flushes a power-state write on every probe, and
+ * only UART0/ATC are hooked by the hv's map_essential - every other PMGR
+ * register passes straight through to real hardware. Describing four domains
+ * instead of ~200 means four possible writes instead of two hundred.
+ *
+ * Offsets are from t6050-pmgr-refs.dtsi, generated from this machine's own
+ * ADT; all four live in pmgr0 at 0x280600000. The dependency chain is
+ *   ans          -> fab6_soc (always-on)
+ *   apcie_sys_st0 -> apcie_st0, ans
+ * which is the same shape t6030 (M3 Pro) uses for its NVMe.
+ *
+ * m1n1 powers /arm-io/ans up host-side before the guest starts, so these
+ * writes ask for a state the hardware is already in.
+ */
+&soc {
+	pmgr_nvme: power-management@280600000 {
+		compatible = "apple,t6050-pmgr", "apple,t8103-pmgr", "syscon", "simple-mfd";
+		#address-cells = <1>;
+		#size-cells = <1>;
+		reg = <0x2 0x80600000 0 0x4000>;
+
+		ps_fab6_soc: power-controller@138 {
+			compatible = "apple,t6050-pmgr-pwrstate", "apple,t8103-pmgr-pwrstate";
+			reg = <0x138 4>;
+			#power-domain-cells = <0>;
+			#reset-cells = <0>;
+			label = "fab6_soc";
+			apple,always-on;
+		};
+
+		ps_ans: power-controller@140 {
+			compatible = "apple,t6050-pmgr-pwrstate", "apple,t8103-pmgr-pwrstate";
+			reg = <0x140 4>;
+			#power-domain-cells = <0>;
+			#reset-cells = <0>;
+			label = "ans";
+			power-domains = <&ps_fab6_soc>;
+		};
+
+		ps_apcie_st0: power-controller@128 {
+			compatible = "apple,t6050-pmgr-pwrstate", "apple,t8103-pmgr-pwrstate";
+			reg = <0x128 4>;
+			#power-domain-cells = <0>;
+			#reset-cells = <0>;
+			label = "apcie_st0";
+		};
+
+		ps_apcie_sys_st0: power-controller@150 {
+			compatible = "apple,t6050-pmgr-pwrstate", "apple,t8103-pmgr-pwrstate";
+			reg = <0x150 4>;
+			#power-domain-cells = <0>;
+			#reset-cells = <0>;
+			label = "apcie_sys_st0";
+			power-domains = <&ps_apcie_st0>, <&ps_ans>;
+		};
+	};
+
+	/*
+	 * SART is ANS's DMA address filter (not a DART - the NVMe path has no
+	 * IOMMU). Base from the ADT: /arm-io/sart-ans reg[0] = 0x21dc50000.
+	 * ADT says sart-version = 4, compatible "sart,coastguard", which is what
+	 * apple,t6000-sart drives.
+	 */
+
+/*
+ * ADDRESSES ARE ADT-TRANSLATED (verified on hardware 2026-08-29).
+ *
+ * /arm-io applies a +0x200000000 ranges translation. The ADT stores ans
+ * reg[3]=0x21dcc0000 and reg[0]=0x219600000, but the REAL addresses are
+ * 0x41dcc0000 and 0x419600000. Reading the raw values faults, which is what
+ * was misdiagnosed for a whole session as "ANS is power-gated".
+ *
+ * Proof, host-side over the proxy with fab6_soc powered:
+ *   0x41dcc0000 = 0xf00100fd   <- NVMe CAP, the controller answering
+ *   0x419600000 = 0x00000001
+ *   0x419601300 = 0x00000000   <- BOOT_STATUS, 0 until Linux boots the coproc
+ *   0x41dc50000 = 0x000000ff   <- SART
+ * uart0 is the control: raw 0x305200000 -> 0x505200000, where the working
+ * console lives. Always translate ADT regs via adt["arm-io"].translate().
+ */
+	sart_ans: sart@41dc50000 {
+		compatible = "apple,t6050-sart", "apple,t6000-sart";
+		reg = <0x4 0x1dc50000 0x0 0xc000>;
+		power-domains = <&ps_ans>;
+	};
+
+	/*
+	 * ANS runs an RTKit coprocessor; Linux talks to it over an ASC mailbox.
+	 *
+	 * The mailbox is not named in the ADT, but m1n1's own NVMe driver
+	 * settles where it is: src/nvme.c calls asc_init("/arm-io/ans"), which
+	 * takes ADT reg[0] as the ASC base (src/asc.c:32) and puts the mailbox
+	 * at base + 0x8000 (src/asc.c:53). reg[0] here is 0x219600000, so the
+	 * mailbox is 0x219608000.
+	 *
+	 * Note this is NOT nvme_base - 0x48b8000. That offset is exact on
+	 * t8103, t6000, t6020, t6030 and t6031 and would have given 0x219408000;
+	 * the ASC genuinely moved on T6050. Trust the ADT, not the pattern.
+	 * IRQs: the ADT lists
+	 * the four ANS mailbox IRQs as {1347,1348,1349,1350} (scrambled), and
+	 * every reference DT assigns them sequentially in this name order.
+	 * ADT compatible is "iop,ascwrap-v6" == asc-mailbox-v4 bindings.
+	 */
+	ans_mbox: mbox@419608000 {
+		compatible = "apple,t6050-asc-mailbox", "apple,asc-mailbox-v4";
+		reg = <0x4 0x19608000 0x0 0x4000>;
+		interrupt-parent = <&aic>;
+		interrupts = <AIC_IRQ 1347 IRQ_TYPE_LEVEL_HIGH>,
+		             <AIC_IRQ 1348 IRQ_TYPE_LEVEL_HIGH>,
+		             <AIC_IRQ 1349 IRQ_TYPE_LEVEL_HIGH>,
+		             <AIC_IRQ 1350 IRQ_TYPE_LEVEL_HIGH>;
+		interrupt-names = "send-empty", "send-not-empty",
+		                  "recv-empty", "recv-not-empty";
+		#mbox-cells = <0>;
+		power-domains = <&ps_ans>;
+	};
+
+	/*
+	 * The SSD itself. T6050 is an M4+/T8132-style ANS split (ADT property
+	 * nvme-secure-bar): the REAL NVMe register file (CAP/CC/CSTS,
+	 * doorbells, MAX_PEND +0x1210, LINEAR_SQ_CTRL +0x24908, the new
+	 * IOQ regs +0x1200/+0x1208) lives at ADT ans reg[9] = raw 0x25dcc0000
+	 * -> 0x45dcc0000, while ans reg[3] = 0x41dcc0000 holds ONLY the NVMMU
+	 * (+0x28100..+0x28120). Every AP access to reg[3] beyond the base page
+	 * bus-errors (L2C_ERR 0x82; 189 guest SErrors all latched
+	 * 0x41dce4908 = old-base+LINEAR_SQ_CTRL). Confirmed against upstream
+	 * m1n1 53f8ee9b54ba "nvme: support T8132" and on hardware
+	 * (answin2.py, 2026-08-29): every t8132-model read is clean.
+	 *
+	 * Our pristine kernel predates the t8132 driver, so "nvme" points at
+	 * reg[9] and the hv papers over the rest (T8132 NVME SHIM in
+	 * map_essential): it HW-remaps the guest's NVMMU page
+	 * 0x45de8000 -> 0x41de8000 and synthesizes the mandatory M4+ IO-queue
+	 * registration writes by sniffing the admin queue. reg[1] "ans" is
+	 * still the ASC base (ADT reg[0] = 0x219600000): COPROC_CPU_CONTROL
+	 * +0x44 and BOOT_STATUS +0x1300 are there and unchanged.
+	 * The NVMe IRQ is ADT interrupts[4] = 2338, selected by the ADT's own
+	 * nvme-interrupt-idx = 4.
+	 */
+	nvme: nvme@45dcc0000 {
+		compatible = "apple,t6050-nvme-ans3", "apple,t8103-nvme-ans2";
+		reg = <0x4 0x5dcc0000 0x0 0x60000>,
+		      <0x4 0x19600000 0x0 0x4000>;
+		reg-names = "nvme", "ans";
+		interrupt-parent = <&aic>;
+		interrupts = <AIC_IRQ 2338 IRQ_TYPE_LEVEL_HIGH>;
+		mboxes = <&ans_mbox>;
+		apple,sart = <&sart_ans>;
+		power-domains = <&ps_ans>, <&ps_apcie_sys_st0>;
+		power-domain-names = "ans", "apcie0";
+		resets = <&ps_ans>;
+	};
+};
+
+&aic { /delete-property/ power-domains; };
+&pinctrl_nub { /delete-property/ power-domains; };
+&pinctrl_ap { /delete-property/ power-domains; };
+&i2c0 { /delete-property/ power-domains; };
+&i2c1 { /delete-property/ power-domains; };
+&i2c2 { /delete-property/ power-domains; };
+&i2c3 { /delete-property/ power-domains; };
+&i2c4 { /delete-property/ power-domains; };
+
+/*
+ * RAM-rootfs era: the guest now has a FULL module set, so udev coldplug
+ * probes every enabled DT node. With pmgr deleted these blocks cannot be
+ * powered on, and gpio0 (pinctrl_ap, 0x29c000000) is powered OFF: the
+ * pinctrl-apple-gpio probe's first regmap read SError'd even the host
+ * (hv-ramroot run 2, ESR 0x92000410, FAR 0x29c0001c0). Disable every
+ * MMIO node the guest cannot power. serial0 is hv-emulated; AIC and WDT
+ * are exercised by m1n1 itself, i.e. proven powered.
+ */
+&pinctrl_nub { status = "disabled"; };
+&pinctrl_aop { status = "disabled"; };
+&pinctrl_ap { status = "disabled"; };
+&i2c0 { status = "disabled"; };
+&i2c1 { status = "disabled"; };
+&i2c2 { status = "disabled"; };
+&i2c3 { status = "disabled"; };
+&i2c4 { status = "disabled"; };

@@ -1,0 +1,123 @@
+/dts-v1/;
+/plugin/;
+
+/*
+ * Runtime overlay: right-hand USB-C socket of the J714s (ADT instance 2),
+ * USB2 host only. PMGR variant: identical to the minimal overlay plus the
+ * power-controller nodes for the ATC2 USB domains so genpd can power them
+ * (the apple-pmgr-pwrstate driver is built in). Use ONLY if the loader
+ * module's read-only PMGR report shows the domains are not active.
+ *
+ * Offsets from the ADT /arm-io/pmgr device table (group 0 = reg[0]
+ * 0x280600000, group 2 = reg[9] 0x288300000), matching t6050-pmgr-refs.dtsi:
+ *   FAB5_SOC     id 52  group 0 +0x1f0 (always-on)
+ *   ATC2_COMMON  id 61  group 0 +0x238  parent FAB5_SOC
+ *   ATC2_USB_AON id 266 group 2 +0x178
+ *   ATC2_USB     id 267 group 2 +0x180  parents ATC2_COMMON, ATC2_USB_AON
+ * Numeric phandle 2 is the AIC (see the minimal overlay).
+ */
+
+/ {
+	fragment@0 {
+		target-path = "/soc";
+		__overlay__ {
+			pmgr0_usb: power-management@280600000 {
+				compatible = "apple,t6050-pmgr", "apple,t8103-pmgr", "syscon", "simple-mfd";
+				#address-cells = <1>;
+				#size-cells = <1>;
+				reg = <0x2 0x80600000 0x0 0x4000>;
+
+				ps_fab5_soc: power-controller@1f0 {
+					compatible = "apple,t6050-pmgr-pwrstate", "apple,t8103-pmgr-pwrstate";
+					reg = <0x1f0 4>;
+					#power-domain-cells = <0>;
+					#reset-cells = <0>;
+					label = "fab5_soc";
+					apple,always-on;
+				};
+
+				ps_atc2_common: power-controller@238 {
+					compatible = "apple,t6050-pmgr-pwrstate", "apple,t8103-pmgr-pwrstate";
+					reg = <0x238 4>;
+					#power-domain-cells = <0>;
+					#reset-cells = <0>;
+					label = "atc2_common";
+					power-domains = <&ps_fab5_soc>;
+				};
+			};
+
+			pmgr2_usb: power-management@288300000 {
+				compatible = "apple,t6050-pmgr", "apple,t8103-pmgr", "syscon", "simple-mfd";
+				#address-cells = <1>;
+				#size-cells = <1>;
+				reg = <0x2 0x88300000 0x0 0xc000>;
+
+				ps_atc2_usb_aon: power-controller@178 {
+					compatible = "apple,t6050-pmgr-pwrstate", "apple,t8103-pmgr-pwrstate";
+					reg = <0x178 4>;
+					#power-domain-cells = <0>;
+					#reset-cells = <0>;
+					label = "atc2_usb_aon";
+				};
+
+				ps_atc2_usb: power-controller@180 {
+					compatible = "apple,t6050-pmgr-pwrstate", "apple,t8103-pmgr-pwrstate";
+					reg = <0x180 4>;
+					#power-domain-cells = <0>;
+					#reset-cells = <0>;
+					label = "atc2_usb";
+					power-domains = <&ps_atc2_common &ps_atc2_usb_aon>;
+				};
+			};
+
+			usb_right_dart0: iommu@382f00000 {
+				compatible = "apple,t6050-dart", "apple,t8110-dart";
+				reg = <0x3 0x82f00000 0x0 0xc000>;
+				interrupt-parent = <2>;
+				interrupts = <0 1487 4>;
+				#iommu-cells = <1>;
+				power-domains = <&ps_atc2_usb>;
+			};
+
+			usb_right_dart1: iommu@382f80000 {
+				compatible = "apple,t6050-dart", "apple,t8110-dart";
+				reg = <0x3 0x82f80000 0x0 0xc000>;
+				interrupt-parent = <2>;
+				interrupts = <0 1487 4>;
+				#iommu-cells = <1>;
+				power-domains = <&ps_atc2_usb>;
+			};
+
+			usb_right_phy: phy@382a90000 {
+				compatible = "azahi,t6050-usb2-phy";
+				reg = <0x3 0x82a90000 0x0 0x4000>,
+				      <0x3 0x82800000 0x0 0x4000>;
+				reg-names = "usb2phy", "usb2evt";
+				#phy-cells = <1>;
+				power-domains = <&ps_atc2_usb>;
+				azahi,tunable-usb2phy-default = <0x20000008 0x7003 0x0003>,
+								<0x20000018 0x0703 0x0103>;
+				azahi,tunable-usb2phy-host = <0x20000008 0x7003 0x7003>;
+				azahi,sig-clear-mask = <0x01c1000c>;
+			};
+
+			usb_right: usb@382280000 {
+				compatible = "azahi,t6050-dwc3-usb2";
+				reg = <0x3 0x82280000 0x0 0xcd00>,
+				      <0x3 0x8228cd00 0x0 0x3200>;
+				reg-names = "dwc3-core", "dwc3-apple";
+				interrupt-parent = <2>;
+				interrupts = <0 1483 4>;
+				dr_mode = "host";
+				maximum-speed = "high-speed";
+				azahi,force-host-mode;
+				iommus = <&usb_right_dart0 0>, <&usb_right_dart0 1>,
+					 <&usb_right_dart1 0>, <&usb_right_dart1 1>;
+				dma-coherent;
+				power-domains = <&ps_atc2_usb>;
+				phys = <&usb_right_phy 3>;
+				phy-names = "usb2-phy";
+			};
+		};
+	};
+};

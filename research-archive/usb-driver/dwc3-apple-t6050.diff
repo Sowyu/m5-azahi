@@ -1,0 +1,91 @@
+--- vendor/dwc3/dwc3-apple.original.c	2026-09-12 14:54:10
++++ dwc3-apple-t6050.c	2026-09-12 14:59:46
+@@ -1,7 +1,15 @@
+ // SPDX-License-Identifier: GPL-2.0
+ /*
+- * Apple Silicon DWC3 Glue driver
++ * Apple Silicon DWC3 Glue driver -- azahi T6050 right-socket fork
+  * Copyright (C) The Asahi Linux Contributors
++ *
++ * Fork of the stock 7.0.13 dwc3-apple.c (vendor/dwc3/dwc3-apple.original.c)
++ * for the J714s USB2-host bring-up. Changes: distinct compatible so the stock
++ * driver never binds, optional reset provider (the m1n1-based loader already
++ * leaves the DWC3 out of reset through the pipehandler), an
++ * azahi,force-host-mode property that brings the core up in host mode at probe
++ * because there is no Type-C role-switch source yet, early drvdata for a safe
++ * remove path, and extra log lines. Private bring-up code, not for upstream.
+  *
+  * Based on:
+  *  - dwc3-qcom.c Copyright (c) 2018, The Linux Foundation. All rights reserved.
+@@ -356,6 +364,7 @@
+ 	int ret;
+ 
+ 	guard(mutex)(&appledwc->lock);
++	dev_info(appledwc->dev, "azahi: role switch request %d in state %d\n", role, appledwc->state);
+ 
+ 	/*
+ 	 * Skip role switches if appledwc is already in the desired state. The
+@@ -445,10 +454,15 @@
+ 	appledwc->dev = &pdev->dev;
+ 	mutex_init(&appledwc->lock);
+ 
+-	appledwc->reset = devm_reset_control_get_exclusive(dev, NULL);
++	/* azahi: keep the remove path safe even if the core probe never ran */
++	platform_set_drvdata(pdev, &appledwc->dwc);
++
++	appledwc->reset = devm_reset_control_get_optional_exclusive(dev, NULL);
+ 	if (IS_ERR(appledwc->reset))
+ 		return dev_err_probe(&pdev->dev, PTR_ERR(appledwc->reset),
+ 				     "Failed to get reset control\n");
++	if (!appledwc->reset)
++		dev_info(dev, "azahi: no reset provider; relying on loader pipehandler/DWC3 state\n");
+ 
+ 	ret = reset_control_assert(appledwc->reset);
+ 	if (ret) {
+@@ -478,6 +492,22 @@
+ 	ret = dwc3_apple_setup_role_switch(appledwc);
+ 	if (ret)
+ 		return dev_err_probe(&pdev->dev, ret, "Failed to setup role switch\n");
++
++	/*
++	 * azahi: no SPMI SN201202x Type-C driver exists in this kernel, so the
++	 * role-switch cable event that would leave PROBE_PENDING never arrives.
++	 * For the fixed downstream test port bring the core up in host mode now
++	 * (same approach as the wallace T6040 force-host bring-up patch).
++	 */
++	if (device_property_read_bool(dev, "azahi,force-host-mode")) {
++		dev_info(dev, "azahi: forcing host mode at probe\n");
++		mutex_lock(&appledwc->lock);
++		ret = dwc3_apple_init(appledwc, DWC3_APPLE_HOST);
++		mutex_unlock(&appledwc->lock);
++		if (ret)
++			return dev_err_probe(&pdev->dev, ret, "Failed forced host-mode init\n");
++		dev_info(dev, "azahi: host mode up (state %d)\n", appledwc->state);
++	}
+ 
+ 	return 0;
+ }
+@@ -502,7 +532,7 @@
+ }
+ 
+ static const struct of_device_id dwc3_apple_of_match[] = {
+-	{ .compatible = "apple,t8103-dwc3" },
++	{ .compatible = "azahi,t6050-dwc3-usb2" },
+ 	{}
+ };
+ MODULE_DEVICE_TABLE(of, dwc3_apple_of_match);
+@@ -511,7 +541,7 @@
+ 	.probe		= dwc3_apple_probe,
+ 	.remove		= dwc3_apple_remove,
+ 	.driver		= {
+-		.name	= "dwc3-apple",
++		.name	= "dwc3-apple-t6050",
+ 		.of_match_table	= dwc3_apple_of_match,
+ 	},
+ };
+@@ -520,4 +550,4 @@
+ 
+ MODULE_LICENSE("GPL");
+ MODULE_AUTHOR("Sven Peter <sven@kernel.org>");
+-MODULE_DESCRIPTION("DesignWare DWC3 Apple Silicon Glue Driver");
++MODULE_DESCRIPTION("DesignWare DWC3 Apple Silicon Glue Driver (azahi T6050 right-socket fork)");

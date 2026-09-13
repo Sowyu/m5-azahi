@@ -1,0 +1,15 @@
+[Unit]
+Description=Install first-boot input and desktop configuration on Linux root
+DefaultDependencies=no
+Requires=sysroot.mount
+After=sysroot.mount
+Before=initrd-root-fs.target initrd-parse-etc.service
+OnFailure=emergency.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/bash /ssdroot-configure.sh
+TimeoutStartSec=90
+StandardOutput=journal+console
+StandardError=journal+console

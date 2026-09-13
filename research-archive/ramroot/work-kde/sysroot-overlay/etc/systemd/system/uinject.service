@@ -1,0 +1,14 @@
+[Unit]
+Description=Synthetic keyboard/mouse fed from the m1n1 vuart
+After=systemd-udevd.service
+Before=graphical.target
+
+[Service]
+Type=simple
+ExecStartPre=-/sbin/modprobe uinput
+ExecStart=/usr/local/bin/uinject
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

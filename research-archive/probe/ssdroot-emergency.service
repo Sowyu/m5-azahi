@@ -1,0 +1,16 @@
+[Unit]
+Description=Offline SSD bring-up diagnostic console
+DefaultDependencies=no
+Conflicts=shutdown.target
+IgnoreOnIsolate=yes
+ConditionPathExists=/etc/initrd-release
+
+[Service]
+Type=simple
+ExecStart=/bin/bash /ssdroot-emergency.sh
+StandardInput=tty-force
+StandardOutput=tty
+StandardError=tty
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
