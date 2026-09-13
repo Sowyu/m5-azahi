@@ -1,7 +1,8 @@
 # SPMI4 transport prototype and SN201202x backport — host tests only
 
 2026-09-13. Host-only compile audit for USB2 tethering on T6050/J714s.
-No loadable module, overlay, installer, target access or hardware writes.
+No loadable PD module, overlay or installer. The separate host proxy diagnostic
+has now performed attended hardware tests, detailed below.
 The existing three-module USB candidate and delivery manifest are unchanged.
 
 ## Attended proxy diagnostic route
@@ -30,7 +31,7 @@ unlisted select interrupt at BASE+2. This supports polling as a candidate,
 but does not constitute a generation-4 hardware test. We do not access the
 secondary slave or its logical interrupt registers.
 
-`python3 test-proxy-hpm.py` passes 13 offline tests, including the real C/FFI
+`python3 test-proxy-hpm.py` passes 19 offline tests, including the real C/FFI
 bridge, callback-error containment, selector timing, sleeping-device rejection,
 logical-register allowlisting, S0 refusal cases, exact two-write task sequence
 and readback. The saved-tree test needs private ADT dependencies; nothing is
@@ -43,13 +44,37 @@ Two successful snapshots report mode `APP `, VID `0x28`, status `0x10000000`,
 system state `7`, and zero power/data status. This is first live evidence for
 the transport, not electrical VBUS or phone enumeration.
 
-**No SSPS task has been issued.** State 7 is outside our initial known-state
+Initial diagnostic: no SSPS task had been issued. State 7 was outside our known-state
 guard; status bit 28 is labelled a voltage warning in the older tipd header.
 Its meaning on this controller has not been resolved. Do not bypass either
-guard just to force a test. User was asked to connect the phone to the right
-socket, if free, while retaining the helper cable; await that physical check.
-The target remains in proxy. Any later v6 RAM boot still needs fresh layout
-inspection; old session addresses must not be reused blindly.
+guard just to force a test.
+
+Subsequent attachment reads: status 0x1000b41d, power status 0x0f3f,
+data status 0x800000f3, state 7. Pinned role definitions indicate sink/device.
+The phone UI nevertheless reports "USB controlled by Connected device";
+cable-to-controller correlation is pending, so do not assume which partner
+these values describe. The separately gated `--host-data` sends one SWDF
+data-role task only, with completion/result/role readback and no power-role
+swap or SSPS. Its one live attempt completed with result 3 (rejected),
+leaving roles/state unchanged. No automatic retry or fallback power task.
+Tests cover refusal, timeout and unexpected power-role change. A host-side
+success result would still not prove USB enumeration or networking.
+Cable correlation subsequently passed: unplugging only the phone cleared the
+right controller's attachment, power and data status. A new, separately gated
+`--awake-disconnected` experiment follows the pinned upstream SN201202x
+SSPS(S0) startup path, but requires the exact observed disconnected tuple:
+APP, VID0x28, status0x10000000, state7, zero power/data and idle task slot.
+It rechecks status before the two fixed writes and requires task completion,
+zero result, S0 readback and continued disconnection. It does not declare
+bit28 harmless, force electrical VBUS, or relax the default `--s0` guard.
+No power-role swap or UFPf task is performed. Physical attendance is required.
+
+The one attended SSPS experiment succeeded, changing state7 to0. After the
+phone was reconnected, charging was reported and status0x108280fd confirmed
+host/source; power0x0f0d, data0x80000073, state0. The corrected v6 RAM Linux
+handoff with fresh layout/hash/readback checks completed. Tethering remains
+unverified; awaiting native candidate load, phone enumeration and network test.
+No target SSD boot update or daily macOS access. Old RAM pins must not be reused.
 
 ## New: default-disabled polling controller prototype
 
@@ -88,7 +113,7 @@ target headers/exports. No `.ko` is built and no target access occurs.
 
 The command format and strict reply checks follow
 [m1n1's pinned SPMI reference](https://github.com/AsahiLinux/m1n1/blob/5d6df45b2b7f9f1f925e469304122cfdd65694ba/proxyclient/m1n1/hw/spmi.py).
-Polling deliberately clears ALERT; acceptance on this hardware is untested.
+Polling deliberately clears ALERT; attended wake/read transactions succeeded.
 Initial and final FIFO state must be idle; a mismatch stops the instance,
 even if a later hardware state might have recovered. Rebinding is not a safe
 recovery procedure and must not be used to bypass a poisoned controller.

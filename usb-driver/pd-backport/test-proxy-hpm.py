@@ -47,6 +47,7 @@ class FakeHPM:
         self.reject = False
         self.pending = False
         self.sleeping = False
+        self.swap_power = False
 
     def transfer(self, op, address=0, out=b'', count=0):
         self.calls.append((op, address, out, count))
@@ -73,6 +74,14 @@ class FakeHPM:
                 else:
                     self.regs[8] = bytes(4)
                     self.regs[0x20] = b'\0'
+            elif self.selected == 8 and out == b'SWDF':
+                if self.reject: self.regs[8] = b'!CMD'
+                elif self.pending: self.regs[8] = b'SWDF'
+                else:
+                    self.regs[8] = bytes(4)
+                    value = int.from_bytes(self.regs[0x1a], 'little') | (1 << 6)
+                    if self.swap_power: value ^= 1 << 5
+                    self.regs[0x1a] = value.to_bytes(4, 'little')
             else:
                 raise RuntimeError('Unexpected logical write')
             return b''
@@ -180,6 +189,34 @@ class Tests(unittest.TestCase):
             with self.assertRaises(RuntimeError): q.read(reg)
         self.assertEqual(p.calls, [])
 
+    def test_host_data_never_changes_power_policy(self):
+        p = FakeHPM(); p.regs[0] = b'\x28\0\0\0'
+        p.regs[0x1a] = bytes.fromhex('1db40010'); p.regs[0x20] = b'\7'
+        q = hpm.HPM(p)
+        self.assertIn('data-host confirmed', q.host_data())
+        self.assertEqual([call for call in p.calls if call[0] == 0],
+                         [(0, 0xa0, b'SWDF', 0)])
+        self.assertEqual(p.regs[0x20], b'\7')
+        count = len(p.calls)
+        with self.assertRaises(RuntimeError): q.host_data()
+        self.assertEqual(len(p.calls), count)
+
+    def test_host_data_refuses_no_partner_fault_or_other_identity(self):
+        for reg, value in ((0, bytes(4)), (0x1a, bytes(4)),
+                           (0x1a, (1 | (1 << 16)).to_bytes(4, 'little')),
+                           (3, b'BOOT'), (8, b'TEST')):
+            p = FakeHPM(); p.regs[0] = b'\x28\0\0\0'; p.regs[0x1a] = b'\1\0\0\0'
+            p.regs[reg] = value; q = hpm.HPM(p)
+            with self.assertRaises(RuntimeError): q.host_data()
+            self.assertFalse(any(op == 0 for op, *_ in p.calls))
+
+    def test_host_data_failures_no_retry(self):
+        for flag in ('reject', 'pending', 'swap_power'):
+            p = FakeHPM(); p.regs[0] = b'\x28\0\0\0'; p.regs[0x1a] = b'\1\0\0\0'
+            setattr(p, flag, True); c = Clock(); q = hpm.HPM(p, c, c.sleep)
+            with self.assertRaises((RuntimeError, TimeoutError)): q.host_data()
+            self.assertEqual(len([call for call in p.calls if call[0] == 0]), 1)
+
     def test_saved_tree_identity(self):
         sys.path[:0] = [str(hpm.ROOT / 'pylib'), str(hpm.ROOT / 'proxy-kit/proxyclient')]
         from m1n1.adt import load_adt
@@ -187,6 +224,35 @@ class Tests(unittest.TestCase):
         hpm.verify_tree(tree)
         tree['/arm-io/nub-spmi-a1']._properties['gen'] = 1
         with self.assertRaises(RuntimeError): hpm.verify_tree(tree)
+
+    def test_disconnected_s0_exact_tuple_and_two_writes(self):
+        p = FakeHPM(); p.regs[0] = b'\x28\0\0\0'
+        p.regs[0x1a] = bytes.fromhex('00000010'); p.regs[0x20] = b'\7'
+        q = hpm.HPM(p)
+        self.assertIn('readback confirmed', q.enter_s0(disconnected_experiment=True))
+        self.assertEqual([call for call in p.calls if call[0] == 0],
+                         [(0, 0xa0, b'\0', 0), (0, 0xa0, b'SSPS', 0)])
+        self.assertEqual(q.last_task_result, 0)
+        with self.assertRaises(RuntimeError): q.enter_s0(disconnected_experiment=True)
+
+    def test_disconnected_s0_refuses_every_changed_precondition(self):
+        changes = [(0, b'\x51\4\0\0'), (0x20, b'\0'), (0x20, b'\3'),
+                   (0x3f, b'\1\0'), (0x5f, b'\1\0\0\0'), (8, b'BUSY')]
+        changes += [(0x1a, (0x10000000 ^ (1 << bit)).to_bytes(4, 'little'))
+                    for bit in range(32)]
+        for reg, value in changes:
+            p = FakeHPM(); p.regs[0] = b'\x28\0\0\0'
+            p.regs[0x1a] = bytes.fromhex('00000010'); p.regs[0x20] = b'\7'
+            p.regs[reg] = value; q = hpm.HPM(p)
+            with self.assertRaises(RuntimeError): q.enter_s0(disconnected_experiment=True)
+            self.assertFalse(any(call[0] == 0 for call in p.calls))
+
+    def test_default_s0_still_refuses_observed_tuple(self):
+        p = FakeHPM(); p.regs[0] = b'\x28\0\0\0'
+        p.regs[0x1a] = bytes.fromhex('00000010'); p.regs[0x20] = b'\7'
+        q = hpm.HPM(p)
+        with self.assertRaises(RuntimeError): q.enter_s0()
+        self.assertFalse(any(call[0] == 0 for call in p.calls))
 
 
 if __name__ == '__main__': unittest.main(verbosity=2)

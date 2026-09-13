@@ -5,7 +5,11 @@ Default invocation has no target access. --status reads only identity, power,
 and FIFO status. --probe additionally wakes SID12 and selects a small fixed
 set of logical registers. Selection sends commands: it is NOT read-only.
 --s0 additionally permits precisely one SSPS-to-S0 command after APP/VID/status
-checks. No other PD task, reset, IRQ mask, disk or boot policy writes exist.
+checks. No reset, IRQ mask, disk or boot policy writes exist.
+--host-data permits one SWDF data-role negotiation, without a power-role swap
+or SSPS task. It leaves power policy unchanged, including any warning flags.
+--awake-disconnected is an attended SSPS experiment for the exact observed
+unplugged state-7 tuple only. It is not an electrical safety certification.
 Failure latches the process. Never automatically reconnect or flush FIFOs.
 Requires the existing private fixture/proxy dependencies; source is publishable.
 """
@@ -123,6 +127,8 @@ class HPM:
         self.t, self.clock, self.sleep = transport, clock, sleep
         self.failed = False
         self.s0_attempted = False
+        self.host_attempted = False
+        self.last_task_result = None
 
     def select(self, reg):
         if self.failed or reg not in self.ALLOWED:
@@ -158,9 +164,54 @@ class HPM:
     def snapshot(self):
         # Nonzero selector first: a sleeping device returning reg0=0 cannot
         # masquerade as completed selection of the VID logical register.
-        return {f'{r:02x}': self.read(r).hex() for r in (3, 0, 0x1a, 0x20, 0x3f, 0x5f)}
+        return {f'{r:02x}': self.read(r).hex() for r in (3, 0, 8, 9, 0x1a, 0x20, 0x3f, 0x5f)}
 
-    def enter_s0(self):
+    def host_data(self):
+        """Negotiate DFP only. Never set power role, power state or VBUS."""
+        if self.failed or self.host_attempted:
+            raise RuntimeError('Data-role attempt refused')
+        self.host_attempted = True
+        try:
+            if self.read(3) != b'APP ' or int.from_bytes(self.read(0), 'little') != 0x28:
+                raise RuntimeError('Different controller mode/observed vendor identity')
+            status = int.from_bytes(self.read(0x1a), 'little')
+            if not status & 1 or status & (1 << 16):
+                raise RuntimeError('No partner or overcurrent; no data-role task')
+            if status & (1 << 6):
+                return 'already-data-host; no task written'
+            state = self.read(0x20)
+            if self.read(8) not in (bytes(4), b'!CMD'):
+                raise RuntimeError('PD task slot busy; no override')
+            self.select(8)
+            self.t.transfer(0, address=0xa0, out=b'SWDF')
+            deadline = self.clock() + 2
+            for _ in range(100):
+                command = self.read(8)
+                if command == b'!CMD':
+                    raise RuntimeError('SWDF task rejected')
+                if command == bytes(4):
+                    break
+                if command != b'SWDF':
+                    raise RuntimeError('PD task changed unexpectedly')
+                if self.clock() >= deadline:
+                    raise TimeoutError('SWDF did not complete')
+                self.sleep(0.01)
+            else:
+                raise TimeoutError('SWDF attempt limit')
+            self.last_task_result = self.read(9)[0]
+            if self.last_task_result != 0:
+                raise RuntimeError('SWDF result is not success')
+            after = int.from_bytes(self.read(0x1a), 'little')
+            if not after & 1 or not after & (1 << 6):
+                raise RuntimeError('Data-host role not confirmed')
+            if (after ^ status) & (1 << 5) or self.read(0x20) != state:
+                raise RuntimeError('Unexpected power-role/state change; stop')
+            return 'data-host confirmed; power role/state unchanged; USB still untested'
+        except BaseException:
+            self.failed = True
+            raise
+
+    def enter_s0(self, disconnected_experiment=False):
         if self.failed or self.s0_attempted:
             raise RuntimeError('S0 attempt refused')
         self.s0_attempted = True
@@ -172,15 +223,25 @@ class HPM:
             if vid in (0, 0xffffffff):
                 raise RuntimeError('Invalid controller vendor identity')
             status = int.from_bytes(self.read(0x1a), 'little')
-            if status & ((1 << 16) | (1 << 28) | (1 << 29)):
-                raise RuntimeError('PD controller reports power fault/warning')
             state = self.read(0x20)[0]
+            if disconnected_experiment:
+                # Upstream SN201202x startup sends SSPS(S0) from any prior
+                # state. We narrow this attended experiment to the exact
+                # cable-correlated empty-port tuple, not a generic bypass.
+                # Bit28 remains unresolved and is NOT declared harmless.
+                if (vid != 0x28 or status != 0x10000000 or state != 7 or
+                        self.read(0x3f) != bytes(2) or self.read(0x5f) != bytes(4)):
+                    raise RuntimeError('Exact disconnected experiment precondition missing')
+            elif status & ((1 << 16) | (1 << 28) | (1 << 29)):
+                raise RuntimeError('PD controller reports power fault/warning')
             if state == 0:
                 return 'already-S0; no task written'
-            if state not in (3, 4, 5):
+            if not disconnected_experiment and state not in (3, 4, 5):
                 raise RuntimeError('Unknown system power state')
             if self.read(8) not in (bytes(4), b'!CMD'):
                 raise RuntimeError('PD task slot busy; no override')
+            if disconnected_experiment and self.read(0x1a) != bytes.fromhex('00000010'):
+                raise RuntimeError('Port changed before task; no write')
             # Two fixed <=4-byte writes only, following pinned tipd SSPS path.
             self.select(9)
             self.t.transfer(0, address=0xa0, out=b'\0')
@@ -200,10 +261,15 @@ class HPM:
                 self.sleep(0.01)
             else:
                 raise TimeoutError('SSPS attempt limit')
-            if self.read(9)[0] != 0:
+            self.last_task_result = self.read(9)[0]
+            if self.last_task_result != 0:
                 raise RuntimeError('SSPS result is not success')
             if self.read(0x20) != b'\0':
                 raise RuntimeError('S0 state not confirmed')
+            if disconnected_experiment:
+                after = int.from_bytes(self.read(0x1a), 'little')
+                if after & ~((1 << 28) | (1 << 5) | (1 << 6)) or self.read(0x3f) != bytes(2) or self.read(0x5f) != bytes(4):
+                    raise RuntimeError('Unexpected port state after SSPS; no further task')
             return 'S0 readback confirmed; USB not yet tested'
         except BaseException:
             self.failed = True
@@ -237,10 +303,12 @@ def main():
     mode.add_argument('--status', action='store_true')
     mode.add_argument('--probe', action='store_true')
     mode.add_argument('--s0', action='store_true')
+    mode.add_argument('--host-data', action='store_true')
+    mode.add_argument('--awake-disconnected', action='store_true')
     parser.add_argument('--device')
     parser.add_argument('--receipt', type=Path)
     args = parser.parse_args()
-    if not (args.status or args.probe or args.s0):
+    if not (args.status or args.probe or args.s0 or args.host_data or args.awake_disconnected):
         print('OFFLINE ONLY. Explicit mode, serial device and new receipt required for target access.')
         return
     if not args.device or not args.device.startswith('/dev/cu.usbmodem') or not args.receipt:
@@ -256,9 +324,10 @@ def main():
     from m1n1.adt import load_adt
     # Build on host before opening a serial device.
     lib = build_bridge() if not args.status else None
-    report = {'mode': 's0' if args.s0 else 'probe' if args.probe else 'status',
+    report = {'mode': 'awake-disconnected' if args.awake_disconnected else 'host-data' if args.host_data else 's0' if args.s0 else 'probe' if args.probe else 'status',
               'disk_writes': False, 'boot_changed': False, 'network_verified': False}
     iface = None
+    hpm = None
     def expired(_signum, _frame):
         raise TimeoutError('Whole proxy diagnostic exceeded 90 seconds')
     old_alarm_handler = signal.signal(signal.SIGALRM, expired)
@@ -302,9 +371,13 @@ def main():
             hpm = HPM(t)
             report['before'] = hpm.snapshot()
             print('HPM_BEFORE', json.dumps(report['before']), flush=True)
-            if args.s0:
-                report['s0_result'] = hpm.enter_s0()
+            if args.s0 or args.awake_disconnected:
+                report['s0_result'] = hpm.enter_s0(disconnected_experiment=args.awake_disconnected)
                 time.sleep(0.1)
+                report['after'] = hpm.snapshot()
+                print('HPM_AFTER', json.dumps(report['after']), flush=True)
+            if args.host_data:
+                report['host_result'] = hpm.host_data()
                 report['after'] = hpm.snapshot()
                 print('HPM_AFTER', json.dumps(report['after']), flush=True)
         report['success'] = True
@@ -318,6 +391,8 @@ def main():
         signal.signal(signal.SIGALRM, old_alarm_handler)
         if iface:
             iface.dev.close()
+        if hpm is not None:
+            report['last_task_result'] = hpm.last_task_result
         with args.receipt.open('x') as output:
             json.dump(report, output, indent=2)
     print('Proxy remains parked. No boot, disk write, IRQ mask or reset was issued.')
