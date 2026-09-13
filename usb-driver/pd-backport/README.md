@@ -15,6 +15,13 @@ Linux time is suspected and still needs verification/correction. Do not use
 insecure TLS flags or rerun driver loading. Persistent boot/network setup
 is still unfinished, and no native PD module has been installed.
 
+Follow-up: chronyd restart and chronyc makestep corrected the date. The
+interface-bound, no-proxy HTTPS HEAD request then returned HTTP/2 200 with
+certificate verification enabled. Native tethering and validated HTTPS now
+work for this boot. This is not a throughput, endurance or reboot-persistence
+test. Authenticated native remote access is the next proposed efficiency step;
+no remote connection has been configured or verified yet.
+
 ## Attended proxy diagnostic route
 
 `proxy-hpm.py` now provides a separate pre-Linux test route using the same
