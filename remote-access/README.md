@@ -61,7 +61,10 @@ It adds the dedicated `azahi-usb-tether` NetworkManager autoconnect profile,
 without replacing the currently active connection. The installer does not
 start conflicting listeners; an attended, rollback-protected live transition
 is a separate step. These services are installed and live-tested on the
-research machine, but cold boot remains untested.
+research machine. One subsequent cold boot also verified automatic tunnel
+reconnection, the saved USB profile and certificate-validated HTTPS. That
+boot required empty USB-C sockets until KDE loaded, then phone connection
+and tethering enabled on the phone. This is not a general reliability claim.
 
 The tunnel needs this helper relay running and reachable at its configured
 address; it is not independent cloud access. The laptop's internet connection
