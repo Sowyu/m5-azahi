@@ -2,6 +2,16 @@
 
 ## Immediate state
 
+LATEST PHOTO: KDE Konsole shows all five courier files at the correct path.
+Delivery succeeded. Next target command (one line):
+
+```sh
+cd /run/azahi-usb-20260913 && sha256sum -c SHA256SUMS
+```
+
+Wait for four OK checks before considering diagnostic-only preflight. No USB
+module load or network success yet. Do not reboot; persistent v4 is unchanged.
+
 NEWEST: the user restarted into proxy, fresh session identity/RAM layout was
 verified, and the guarded v6 RAM handoff completed successfully. All old payload
 bytes were checked and all replacement bytes read back. Native desktop/courier
