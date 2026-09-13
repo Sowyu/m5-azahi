@@ -2,6 +2,14 @@
 
 ## Immediate state
 
+LATEST: courier v2/v6 built and tested in a no-disk/no-network ARM64 VM with
+the actual initrd executables. Old failure reproduced; new courier and five
+image checks pass. Target still running KDE from prior RAM boot, no new image
+installed. `/run/initramfs` only held `log`, not the courier assets.
+Next controlled shutdown/restart should reach existing v4 fallback proxy.
+Read fresh identity/base/bootargs, verify old bundle and memory bounds before
+any v6 RAM write. Permanent v4 replacement is still outstanding.
+
 NEWEST PHOTO: `initrd-switch-root` journal reports the courier stopped at line11
 because `mktemp` is absent. The hook did run. Fix/test the courier's early-boot
 tool dependencies before building another candidate. Do not ask the user to

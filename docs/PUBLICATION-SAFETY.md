@@ -47,6 +47,12 @@ approved paths still undergo content checks. No blanket exceptions for archives.
 Hooks are installed in this public clone; Git does not automatically install
 them in new clones. New clones require explicit setup after code review.
 
+The courier-v6 update explicitly reviewed and added exactly five source paths:
+`boot-stage-v2.sh`, `build-transfer-v6.py`, `courier-vm-init.sh`,
+`test-courier-vm.py`, and `test-transfer-v6.py` under `usb-driver/`.
+The prior installed policy was preserved locally before enrolling only those
+paths. Hooks stayed enabled and continue to scan their contents and history.
+
 ## Limits
 
 These controls make accidental publication much harder, not impossible.

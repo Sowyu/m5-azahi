@@ -22,6 +22,14 @@ The storage test prints where its temporary executable was retained.
 
 ## Tests/builds requiring private inputs
 
+Courier-v2 correction adds `test-transfer-v6.py` (five passing image tests) and
+`test-courier-vm.py` (QEMU ARM64, six successful scenario markers using the
+exact original initrd tools). The VM has no disks, network or USB passthrough.
+It reproduces the original missing-mktemp failure before testing the fix.
+These require private v3/v4/v5/v6 image fixtures and QEMU; they cannot run from
+this source-only public clone alone. Test-only initrd additions are not part
+of the target boot image. Original pinned courier/build scripts are preserved.
+
 Publication validation on 2026-09-13 reran all four host commands above in the
 sanitized public clone: input transport checks passed, **525,366 storage policy
 checks passed**, and **19 runner + 3 glue/overlay tests passed**. No target
