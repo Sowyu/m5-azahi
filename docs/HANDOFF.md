@@ -1,6 +1,26 @@
 # Resume safely
 
-## Latest: native USB tethering works; HTTPS clock error remains
+## Latest: certificate-validated HTTPS over USB confirmed
+
+User screen evidence shows chronyd restart, chronyc makestep returning
+200 OK, and UTC date corrected to September 13, 2026. A subsequent curl
+HEAD request with --noproxy '*' and --interface enu1 to the Asahi HTTPS site
+returned HTTP/2 200 with certificate verification enabled (no insecure flag).
+Together with prior DHCP, DNS, external ping and browser evidence, native
+USB tethering is confirmed working for this boot. The earlier certificate
+error cleared after clock correction. This is a successful HEAD test, not
+a rerun of the original runner's GET test or a bandwidth/stability benchmark.
+
+Next efficiency improvement: establish authenticated native remote access
+so commands/logs can move directly, rather than user typing/photos. No SSH,
+remote agent or inbound reachability is configured/verified yet; phone NAT
+may require a deliberate connection route. Network access also permits native
+downloads. Do not assume autonomous or reboot-persistent operation: current
+HPM setup was from proxy and permanent loader still needs correction.
+No reboot, new driver load, remote-access setup or macOS change was performed
+for this milestone. Photos and raw request/device identifiers remain private.
+
+## Earlier: native USB tethering works; HTTPS clock error remains
 
 User-provided screen evidence shows the preserved candidate loaded on native
 Linux and a unique right-port USB network interface, enu1, was identified.
