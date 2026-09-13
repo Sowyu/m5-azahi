@@ -1,6 +1,20 @@
 # Progress — 2026-09-13
 
-## Latest: corrected v6 installed and readback verified; cold boot NEXT
+## Latest: v6 cold boot reaches KDE; USB startup FAILED
+
+User reports KDE booted after the attended v6 shutdown/startup test, without
+a new helper payload. This is the first reported cold boot of installed v6.
+However, the phone does not charge and USB tethering is unavailable. The user
+also tried the minimal driver command; its detailed result is not yet known.
+
+Native SSH is currently unreachable (reverse-forward listener absent).
+Prior working-boot tethering/SSH evidence remains valid, but automatic USB
+initialization across cold boot is NOT working. Do not call this a successful
+autonomous network setup. Need azahi-usb service journal and azahi-hpm kernel
+messages before assigning a cause. No repeated minimal command, driver unload,
+blind HPM retry, power-register write or reboot. Preserve KDE and obtain logs.
+
+## Earlier: corrected v6 installed and readback verified; cold boot NEXT
 
 The attended Recovery repair passed its fresh snapshot gate and installed
 the corrected v6 loader. The uploaded readback matches the exact previously
