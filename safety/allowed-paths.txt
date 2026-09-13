@@ -350,3 +350,4 @@ usb-driver/build-transfer-v6.py
 usb-driver/courier-vm-init.sh
 usb-driver/test-courier-vm.py
 usb-driver/test-transfer-v6.py
+usb-driver/proxy-test-v6.py

@@ -2,6 +2,13 @@
 
 ## Immediate state
 
+NEWEST: the user restarted into proxy, fresh session identity/RAM layout was
+verified, and the guarded v6 RAM handoff completed successfully. All old payload
+bytes were checked and all replacement bytes read back. Native desktop/courier
+confirmation is pending; ask for `ls /run/azahi-usb-20260913` from KDE Konsole.
+Proxy access was consumed by handoff. No native network transport is established.
+Persistent v4 remains installed; permanent correction is still a separate task.
+
 LATEST: courier v2/v6 built and tested in a no-disk/no-network ARM64 VM with
 the actual initrd executables. Old failure reproduced; new courier and five
 image checks pass. Target still running KDE from prior RAM boot, no new image

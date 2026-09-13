@@ -52,6 +52,9 @@ The courier-v6 update explicitly reviewed and added exactly five source paths:
 `test-courier-vm.py`, and `test-transfer-v6.py` under `usb-driver/`.
 The prior installed policy was preserved locally before enrolling only those
 paths. Hooks stayed enabled and continue to scan their contents and history.
+The subsequent RAM handoff also explicitly enrolled `usb-driver/proxy-test-v6.py`
+after redacting its serial-port identity. The prior policy was preserved first;
+no log, boot image or identity receipt was added.
 
 ## Limits
 
