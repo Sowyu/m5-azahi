@@ -1,5 +1,16 @@
 # Resume safely
 
+## Latest: v7 full-height candidate installed; first cold boot pending
+
+Fresh backup confirmed the selected working v6 image before installation.
+Recovery installation readback now matches v7 SHA256
+2eaea0bc1503c2ac74a1b11dbb88423675f324a61db3da6db1aa88392672f5ba,
+size92651520, raw entry2048. v6 is preserved as rollback. This supersedes
+the not-installed state below, but NOT the hardware-test warning: no v7
+Linux boot/display result yet. Next boot with every USB-C socket empty;
+connect phone after KDE loads. Check full display mode, settings persistence,
+USB/SSH/HTTPS before declaring success. Private recovery server remains up.
+
 ## Newest: opt-in full-height framebuffer candidate built, NOT installed
 
 User explicitly overrode local bootloader AI restrictions for this personal
