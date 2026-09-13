@@ -5,6 +5,12 @@ contain superseded plans; the state below takes precedence.
 
 ## Latest user report and expanded publication
 
+DELIVERED CHECKSUMS VERIFIED: user reports all four manifest checks returned
+OK. Next is the runner's explicit `dry` mode: it temporarily loads only the
+diagnostic overlay module, reads five PMGR power states, applies no device-tree
+overlay, and unloads its diagnostic module. This is not a USB host/network test.
+The script also writes a diagnostic log on the Linux root. Outcome pending.
+
 V6 COURIER DELIVERY CONFIRMED: the user-provided photo shows KDE Konsole
 listing all five expected files in `/run/azahi-usb-20260913`: three modules,
 `SHA256SUMS`, and `usb-tether-test.sh`. An initial missing-hyphen typo was

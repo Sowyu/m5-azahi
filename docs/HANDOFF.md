@@ -2,6 +2,18 @@
 
 ## Immediate state
 
+LATEST: user reports four checksum OK results, cwd is the courier directory.
+Next explicit diagnostic-only command (trim output, retain full script log):
+
+```sh
+bash usb-tether-test.sh dry 2>&1 | tail -n 20
+```
+
+This loads/unloads only the dry diagnostic module and applies no overlay.
+Inspect actual output; pipeline completion alone does not establish success.
+Do not proceed to `minimal` without evaluating the PMGR result and outstanding
+PHY/DART/VBUS audit risks. Dry result is not yet available.
+
 LATEST PHOTO: KDE Konsole shows all five courier files at the correct path.
 Delivery succeeded. Next target command (one line):
 
