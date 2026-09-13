@@ -4,6 +4,12 @@
 No loadable module, overlay, installer, target access or hardware writes.
 The existing three-module USB candidate and delivery manifest are unchanged.
 
+Latest native report: `/sys/class/typec` is absent and the SPMI device directory
+was reported as "0" (interpreted as `ls -l`'s `total 0`, not a device named 0).
+This is consistent with no enumerated SPMI devices. An absent Type-C class can
+also mean its class module is not loaded; it does not electrically diagnose
+the phone or prove that a class module alone would solve the missing hardware.
+
 ## Source and reproduction
 
 Seven verbatim source/config files under `vendor/tipd` come from
@@ -15,8 +21,13 @@ On the existing host build environment, run `bash check-build.sh` from here.
 Requires the private project's exact 7.0.13-400.asahi.fc44.aarch64+16k headers,
 modpost, and Homebrew LLVM tools. Not a standalone public build environment.
 The script verifies source hashes, independently compiles core/spmi/trace,
-then would link objects and run modpost only if all three compile. It never
+then links objects and runs modpost only if all three compile. Every run uses
+a fresh output directory; failed builds cannot reuse stale objects. It never
 links a `.ko` or refreshes the delivered USB bundle.
+
+The default `upstream` variant preserves the original failure as a control.
+`bash check-build.sh without-tbt-switch` applies `no-tbt-switch.patch` to a
+fresh build copy with zero fuzz, never to the pinned vendor files.
 
 ## Actual result
 
@@ -29,14 +40,52 @@ links a `.ko` or refreshes the delivered USB bundle.
   `typec_thunderbolt_switch_data`, `TYPEC_THUNDERBOLT_SWITCH_*`,
   `typec_thunderbolt_switch_set/put` and
   `fwnode_typec_thunderbolt_switch_get`. No compatibility stubs introduced.
-- Overall check exits 1. Combined linking and modpost were NOT reached.
-  Compilation of individual objects is not a module ABI or hardware test.
+- The unmodified control still exits 1; combined linking/modpost are not reached.
+- The `without-tbt-switch` experiment compiles all three objects, links their
+  combined relocatable object, and passes modpost against the exact kernel's
+  symbol exports. No `.ko` is produced. The upstream pointer-cast warning remains.
+  This does not verify device tables, load-time ABI or hardware operation.
+
+The compatibility patch removes only the dedicated Thunderbolt-switch consumer
+hooks added by [Asahi commit a8a9d4be6e108051c8f1bc876351436cdc312ec6](https://github.com/AsahiLinux/linux/commit/a8a9d4be6e108051c8f1bc876351436cdc312ec6),
+adapted to the later core/header split. It introduces no fake-success stubs,
+changes no SPMI transport bytes, and preserves generic Type-C/mux handling.
+It does NOT itself enforce USB2-only operation or make DP/TBT/USB4 functional.
+Do not install this compile experiment as a finished hardware driver.
 
 ## Integration facts and unresolved risks
 
-The saved Linux rootguard DTB has no SPMI/USB-PD nodes. Native sysfs inventory
-is still requested; the runtime USB overlay adds only DART/PHY/DWC3 devices.
+The saved Linux rootguard DTB has no SPMI/USB-PD nodes. Native sysfs now reports
+an empty SPMI device directory; the runtime USB overlay adds only DART/PHY/DWC3.
 Adding a PD driver alone would not describe its controller or IRQ topology.
+
+More importantly, the saved target ADT identifies nub-spmi-a1 as **generation 4**.
+The 7.0.13 source archive's controller uses the old FIFO layout, has no `.cmd`
+callback and no IRQ domain. Neither Fedora patchset changes drivers/spmi.
+The newer [pinned Asahi controller source](https://github.com/AsahiLinux/linux/blob/236788cd2602a24c703fe7bdaddaf73ef77d2027/drivers/spmi/spmi-apple-controller.c)
+adds commands and IRQ handling but still uses the older register layout.
+Do not bind either implementation to generation 4 merely by adding a compatible.
+
+| Field | Old controller | Generation 4 evidence |
+| --- | --- | --- |
+| FIFO status / command / reply offsets | 0 / 4 / 8 | 0x200 / 0x210 / 0x220 |
+| RX-empty bit | 24 | 30 |
+| IRQ mask / acknowledge banks | 0x20 / 0x60 in newer IRQ-capable source | 0x400 / 0x600, stride 4 |
+
+Generation-4 FIFO definitions agree with [m1n1's published register map](https://github.com/AsahiLinux/m1n1/blob/5d6df45b2b7f9f1f925e469304122cfdd65694ba/proxyclient/m1n1/hw/spmi4.py).
+Saved AppleGen4SPMIHandler initialization independently confirms these offsets,
+status masks and IRQ-bank pointers. Its register-view accessor and IRQ handling
+confirm the pointer/stride interpretation. `audit-spmi4.py` pins private input
+hashes and checks those facts, target identity, the HPM interrupt list and Fedora
+patch coverage: **seven offline tests passed**. Run with the existing Capstone
+environment; it needs the private fixtures and extracted 7.0.13 controller file.
+No firmware bytes or raw disassembly are published. These are static-analysis
+facts, not a tested controller implementation or permission to reset queues.
+
+The saved Apple HPM read path also contains bounded polling of logical selector
+register 0, followed by length register 0x1f and data window 0x20. This is a
+possible alternative to requiring a select IRQ, but its error/retry and wake
+semantics need further review; it has not been implemented or tested here.
 
 Saved hardware-description inspection maps right-port HPM2 to nub-spmi-a1,
 with device interrupts 11/17/19 and interrupt-type entries 0/2/3. The upstream

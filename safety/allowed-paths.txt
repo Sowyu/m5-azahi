@@ -361,3 +361,5 @@ usb-driver/pd-backport/vendor/tipd/spmi.c
 usb-driver/pd-backport/vendor/tipd/tps6598x.h
 usb-driver/pd-backport/vendor/tipd/trace.c
 usb-driver/pd-backport/vendor/tipd/trace.h
+usb-driver/pd-backport/audit-spmi4.py
+usb-driver/pd-backport/no-tbt-switch.patch
