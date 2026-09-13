@@ -1,5 +1,15 @@
 # Progress — 2026-09-13
 
+## Latest: readable scaling and persistent preferences configured
+
+Live KDE now reports scale2 (1512x945 logical) and Breeze Dark. Preferences
+were migrated from a per-launch /run directory to SSD-backed config with a
+backup, and the launcher now reuses that config. App-session restore remains
+disabled; software rendering retained. No restart, USB teardown, partition
+or boot change. Reboot persistence/stability not yet tested. The only exposed
+mode remains 3024x1890; notch strip support and native Codex setup are pending.
+See docs/HANDOFF.md for details and rollback guidance.
+
 ## Latest: v6 SSD cold boot + automatic USB tethering + SSH VERIFIED
 
 After booting with every USB-C socket empty and connecting the phone only

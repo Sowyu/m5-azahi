@@ -1,5 +1,23 @@
 # Resume safely
 
+## Latest: persistent KDE preferences configured, reboot test pending
+
+The installed launcher created a new /run/kde-clean directory each launch,
+explaining lost preferences despite the SSD root. A backup-backed migration
+now keeps current preferences under /root/.config/azahi-kde and redirects the
+active session's old config path there. The launcher uses the persistent path
+on subsequent starts. Software-rendering flags and direct KWin/Plasma startup
+are preserved; session restoration is disabled with loginMode=emptySession.
+
+Live checks confirm 200% scaling (1512x945 logical), Breeze Dark, and matching
+saved configuration on Btrfs. KDE was not restarted; USB and SSH remained active.
+No APFS mounts, partition or boot changes. Persistence is configured but not
+yet verified across a reboot; do not claim the earlier freeze issue resolved.
+Only 3024x1890 is exposed; the notch strip remains a separate display issue.
+Private backup directories and preferences stay on the native laptop. Restore
+the backed-up launcher to return to per-launch clean settings if needed.
+Codex CLI installation is still pending; don't assume native agent access.
+
 ## Latest: v6 SSD cold boot + automatic USB tethering + SSH VERIFIED
 
 After booting with every USB-C socket empty and connecting the phone only
