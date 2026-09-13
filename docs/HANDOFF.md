@@ -2,6 +2,20 @@
 
 ## Immediate state
 
+LATEST: phone connected, tethering grey (controller not enabled yet). First
+attended `minimal` test is being requested after save-work/hang warning:
+
+```sh
+sync && bash usb-tether-test.sh minimal
+```
+
+User should enable tethering as soon as available during the script's wait.
+Allow up to about three minutes for host/interface/DHCP/HTTPS stages. Request
+the output if it fails or stays grey; do not rerun/unload manually. This is an
+explicit experimental hardware test under the user's ongoing USB bring-up
+authorization, not proof that remaining physical SID/PHY/VBUS risks are solved.
+No result has yet been received. Persistent v4 remains unchanged.
+
 LATEST PHOTO: dry preflight PASSED, all five PMGR target/actual states ACTIVE;
 diagnostic unloaded, no overlay applied. User is being asked to disconnect
 the inter-Mac USB cable and connect an unlocked phone to the target's RIGHT

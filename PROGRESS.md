@@ -5,6 +5,19 @@ contain superseded plans; the state below takes precedence.
 
 ## Latest user report and expanded publication
 
+FIRST ATTENDED LIVE TEST NEXT: user confirms the phone is connected and its
+USB tethering toggle is greyed out. The host controller has not yet been enabled,
+so this alone is not evidence of a phone/cable failure. All four delivered
+checksums and the five-domain power preflight have passed.
+
+The user is instructed to save work, run `sync && bash usb-tether-test.sh minimal`
+from the courier directory, and enable phone tethering when it becomes available.
+This is an experimental first hardware test, not a claim that PHY/SID/VBUS
+uncertainties have been eliminated. It may hang and require an attended power
+cycle. The runner does not install boot files; it may create a Linux log and
+a temporary NetworkManager profile. Do not retry or unload an applied overlay.
+Outcome pending; no root hub, phone enumeration or networking success claimed.
+
 FIRST NATIVE DRY PREFLIGHT PASSED: user photo shows all five required PMGR
 domains (FAB5_SOC, ATC2_COMMON, ATC2_USB_AON, ATC2_USB, ATC2_PHYMXWRAP)
 at target/actual ACTIVE. The module reports dry mode, no overlay applied;
