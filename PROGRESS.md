@@ -1,5 +1,43 @@
 # Progress — 2026-09-13
 
+## Latest: live SPMI4/HPM reads succeed; power-state change withheld
+
+The helper proxy appeared. Fresh loader/ADT/right-HPM identity passed.
+Controller power 0x0f0000ff and FIFO 0x40004000 were read before bus commands.
+WAKEUP, selector polling and logical-register reads completed successfully
+using the shared C transport. Two snapshots: APP mode, VID0x28,
+status0x10000000, system state7, power/data status zero.
+
+No SSPS/S0 task, IRQ mask, reset, disk write or boot change was issued.
+State7 and status bit28 require interpretation; the older driver labels the
+latter a voltage warning. Existing S0 guard rejects this combination and
+must not simply be removed to make a test proceed. USB remains unverified.
+
+User was asked to connect the Nothing phone to the right socket (if free),
+leaving the helper cable connected, and report charging. The physical check
+is pending. Target is parked in proxy. Continue with cable/attach observation
+and documented state semantics; then an appropriate controlled test. Prior
+v6 boot address pins are stale until checked against the current session.
+
+## Latest: attended HPM proxy diagnostic prepared; live connection required
+
+Added proxy-hpm.py and a host-only FFI bridge to the already-tested C transport.
+Thirteen offline tests pass. Explicit status-only mode verifies current loader,
+ADT, right-HPM identity, controller power and FIFO state. Probe adds wake and
+logical selections; a separately gated S0 mode permits only the documented
+SSPS system-awake task with safety checks and completion/result/state readback.
+No disk writes, boot changes, controller resets or IRQ-mask writes are present.
+The original USB delivery bundle and Linux modules remain unchanged.
+
+No live HPM command has been issued. Helper currently has no proxy serial port.
+User has been asked to save Linux work, reconnect the known helper cable/socket
+and boot the Linux entry to Running proxy. Do not boot Recovery or touch daily
+macOS. Do not reuse stale v6 RAM addresses: inspect fresh identity/layout first.
+Next: status-only proxy check, then controlled HPM probe if power/FIFO healthy.
+If S0 is needed and verified, test whether it survives the corrected RAM boot
+and enables phone attachment. This is an untested hypothesis, not USB success.
+USB tethering remains unverified; no user network interface/DHCP/HTTPS result.
+
 ## Latest: SPMI4 polling prototype passes host tests, not live-ready
 
 Implemented a shared C FIFO transport plus a Linux SPMI controller adapter in

@@ -4,6 +4,53 @@
 No loadable module, overlay, installer, target access or hardware writes.
 The existing three-module USB candidate and delivery manifest are unchanged.
 
+## Attended proxy diagnostic route
+
+`proxy-hpm.py` now provides a separate pre-Linux test route using the same
+tested C FIFO code via `spmi4-host-bridge.c`. It executes on the helper host,
+not on Linux. Default invocation does not open a device. Explicit `--status`
+checks fresh proxy/ADT identity, right-HPM mapping, active controller power and
+idle FIFO without sending bus commands. `--probe` adds WAKEUP and selections
+of a small fixed logical-register set; selections are writes, not a read-only
+hardware diagnostic. No automatic FIFO draining, reconnect, reset or IRQ-mask
+write occurs. Errors latch the process; do not use repeated invocations as
+recovery from ambiguous bus state.
+
+Separately gated `--s0` permits only the pinned tipd driver's SSPS-to-S0 task,
+after application-mode, nonzero/non-all-ones VID, known system state, no power
+warning, and idle task-slot checks. It requires command completion, success
+result and S0 readback. It neither forces electrical VBUS nor proves charging,
+enumeration or networking. No generic task-writing command is exposed.
+No changes are made to target storage or boot policy; proxy remains parked.
+
+The selector-polling approach agrees with the saved HPM read path and
+[Asahi's ACE3 transport documentation](https://asahilinux.org/docs/hw/peripherals/ace3/).
+That document also describes separate AP/secondary-slave selections and the
+unlisted select interrupt at BASE+2. This supports polling as a candidate,
+but does not constitute a generation-4 hardware test. We do not access the
+secondary slave or its logical interrupt registers.
+
+`python3 test-proxy-hpm.py` passes 13 offline tests, including the real C/FFI
+bridge, callback-error containment, selector timing, sleeping-device rejection,
+logical-register allowlisting, S0 refusal cases, exact two-write task sequence
+and readback. The saved-tree test needs private ADT dependencies; nothing is
+transmitted. The existing four sanitized C test groups still pass.
+
+Live status: the proxy appeared and fresh identity/power/FIFO checks passed.
+NUB_SPMI_A1 power is `0x0f0000ff`, FIFO idle `0x40004000`. The C transport
+successfully sent WAKEUP and polled logical selections on the real device.
+Two successful snapshots report mode `APP `, VID `0x28`, status `0x10000000`,
+system state `7`, and zero power/data status. This is first live evidence for
+the transport, not electrical VBUS or phone enumeration.
+
+**No SSPS task has been issued.** State 7 is outside our initial known-state
+guard; status bit 28 is labelled a voltage warning in the older tipd header.
+Its meaning on this controller has not been resolved. Do not bypass either
+guard just to force a test. User was asked to connect the phone to the right
+socket, if free, while retaining the helper cable; await that physical check.
+The target remains in proxy. Any later v6 RAM boot still needs fresh layout
+inspection; old session addresses must not be reused blindly.
+
 ## New: default-disabled polling controller prototype
 
 `spmi4-transport.h` implements bounded FIFO transactions using the audited
