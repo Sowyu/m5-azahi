@@ -1,6 +1,37 @@
 # Resume safely
 
-## Latest: native HPM wake works; DWC3 live reload fails with -110
+## Latest: v6 SSD cold boot + automatic USB tethering + SSH VERIFIED
+
+After booting with every USB-C socket empty and connecting the phone only
+after KDE loaded, the user reported USB tethering working. The helper then
+reconnected using the existing pinned SSH keys WITHOUT a new bootstrap,
+proxy payload, manual module command or network-profile creation.
+
+Direct native checks confirm:
+- Root is the intended SSD Btrfs filesystem.
+- azahi-usb.service started at boot and reported USB_HOST_READY at ~8 seconds.
+- Native HPM mode=awake, result=0, ready=Y, poisoned=N.
+- The saved azahi-usb-tether profile is active on the USB interface.
+- Both persistent SSH services are active; all three task units and chronyd enabled.
+- Interface-bound certificate-validated HTTPS GET returned HTTP200.
+- Clock synchronized; no failed systemd units and no APFS mounts.
+- CPU online remains only CPU0; Wi-Fi and native GPU still unresolved.
+
+This establishes ONE successful cold boot with automatic Linux-side USB and
+SSH startup, not general reliability or arbitrary hotplug support. Working
+procedure: leave every USB-C socket empty while starting Linux; MagSafe may
+remain. Connect the phone after KDE loads and enable tethering on the phone.
+Boot/internet no longer require a helper payload. Remote SSH still requires
+the same private helper relay running and reachable on the configured network.
+
+Preserve this working session. Do not reload minimal, unload the live overlay
+or repeat DWC3 live reload: that failed with -110 on the earlier boot. Boot
+with a cable present can trigger the deliberate connected-state HPM refusal.
+Shutdown can still hang at poweroff.target; do not claim it is fixed.
+No kernel/runtime update, new power-role task, disk resize, or daily-macOS
+change accompanied this successful boot verification.
+
+## Earlier: native HPM wake works; DWC3 live reload fails with -110
 
 On the v6 cold boot, unplugging USB-C cables and loading the native helper
 in awake mode yielded result=0, ready=1, poisoned=0, state=0. Phone charging
