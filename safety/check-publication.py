@@ -29,6 +29,7 @@ RULES = [
     ('slack-token', rb'\bxox[baprs]-[A-Za-z0-9-]{20,}'),
     ('jwt', rb'\beyJ[A-Za-z0-9_-]{12,}\.[A-Za-z0-9_-]{12,}\.[A-Za-z0-9_-]{12,}'),
     ('personal-home', rb'/(?:Users|home)/[A-Za-z0-9_.-]+/'),
+    ('flattened-personal-home', rb'[-_](?:Users|home)[-_][A-Za-z0-9_.]+[-_]'),
     ('device-uuid', rb'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'),
     ('private-lan', rb'\b(?:192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})\b'),
     ('device-ecid', rb'\becid\W*(?:0x)?[0-9a-f]{10,}\b'),

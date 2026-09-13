@@ -64,6 +64,7 @@ class ContentTests(unittest.TestCase):
             'serial-port-id': b'usbmodem' + b'EXAMPLE123',
             'mac-address': b':'.join([b'ab'] * 6),
             'personal-home': b'/Users' + b'/example/Documents/',
+            'flattened-personal-home': b'-Users' + b'-example-Documents-',
             'upload-capability': b'/upload/' + b'a' * 32,
             'url-credentials': b'https://' + b'user:example-password@host.invalid',
             'literal-secret': b'password' + b'="synthetic-value-only"',

@@ -1,5 +1,32 @@
 # Resume safely
 
+## Current status: v7 cold boot verified; audit repairs in progress
+
+This section supersedes the chronological checkpoints below. One v7 cold
+boot was verified: simpledrm 3024x1964 at 60 Hz, user-selected 175% scaling
+persisted, root on SSD Btrfs, USB tethering and pinned SSH active, and
+interface-bound certificate-validated HTTPS returned 200. No APFS mounts.
+Keep every USB-C socket empty during boot; connect the phone after KDE.
+CPU0 only, software graphics, shutdown power-cut hang, Wi-Fi and native
+Codex installation remain unresolved. This is not a production-ready system.
+
+PR #1 is an unmerged audit, not 300 independently confirmed bugs. Confirmed
+input receiver interface bounds and allocation-failure rearm bugs are fixed
+in source; extracted actual-function tests pass with ASan/UBSan and an exact
+kernel module cross-build succeeds. The replacement module is NOT installed;
+never unload the live input driver to test it. Stage a rollback-backed boot
+test separately. Do not apply the audit's suggested ACK mutex fix: the sender
+holds that mutex while waiting for the ACK. The loader cache-flush allegation
+also ignores the existing initrd relocation and is not a verified defect.
+
+Privacy remediation removes a flattened private directory path from an
+archived patch and adds a regression-tested publication rule. Approved Git
+history cleanup preserves a private backup and the audit branch. Existing
+clones must be refreshed after the rewrite; do not push old history back.
+No evidence of exposed credentials or compromise has been established.
+
+## Historical checkpoints (not current status)
+
 ## Latest: v7 full-height candidate installed; first cold boot pending
 
 Fresh backup confirmed the selected working v6 image before installation.

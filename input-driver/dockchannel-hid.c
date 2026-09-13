@@ -1078,6 +1078,7 @@ static void dchid_handle_packet(void *cookie, size_t avail)
 
 	if (hdr.iface >= MAX_INTERFACES) {
 		dev_err(dchid->dev, "Bad iface %d\n", hdr.iface);
+		goto done;
 	}
 
 	iface = dchid->ifaces[hdr.iface];
@@ -1101,7 +1102,7 @@ static void dchid_handle_packet(void *cookie, size_t avail)
 
 	work = kzalloc(sizeof(*work) + hdr.length, GFP_KERNEL);
 	if (!work)
-		return;
+		goto done;
 
 	work->hdr = hdr;
 	work->iface = iface;

@@ -1,5 +1,19 @@
 # Progress — 2026-09-13
 
+## Current: full-height display and persisted scaling verified
+
+One v7 cold boot passed: 3024x1964 display, user-selected 175% scaling
+persisted, SSD root, USB tethering, SSH and certificate-validated HTTPS.
+The earlier pending/not-installed checkpoints below are historical.
+
+Audit remediation is in progress, not complete. Two confirmed input receive
+bugs are fixed and regression-tested (including ASan/UBSan); an exact-kernel
+module was built but has NOT been installed on the laptop. Publication
+protection now also tests flattened private home paths; a private backup
+supports the approved history cleanup. See docs/HANDOFF.md for boundaries.
+
+## Historical checkpoints
+
 ## Latest: readable scaling and persistent preferences configured
 
 Live KDE now reports scale2 (1512x945 logical) and Breeze Dark. Preferences
