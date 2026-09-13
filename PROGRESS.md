@@ -5,6 +5,25 @@ contain superseded plans; the state below takes precedence.
 
 ## Latest user report and expanded publication
 
+FIRST NATIVE DRY PREFLIGHT PASSED: user photo shows all five required PMGR
+domains (FAB5_SOC, ATC2_COMMON, ATC2_USB_AON, ATC2_USB, ATC2_PHYMXWRAP)
+at target/actual ACTIVE. The module reports dry mode, no overlay applied;
+the runner unloads it and prints diagnostic complete. No host controller or
+network interface was enabled by this check.
+
+Follow-up source review: the exact kernel's apple_dart_of_xlate accumulates
+multiple SIDs for the same DART; four references to two DARTs are not inherently
+a four-DART slot overflow. This does not prove the candidate's physical SID
+routing. The kernel config defaults to DMA translation, not passthrough.
+The isolated loader source confirms its SIG write; the candidate's host-mode
+clear-mask remains a deliberate, hardware-unverified deviation. Power ACTIVE
+does not settle PHY behaviour or Type-C VBUS sourcing.
+
+Next physical preparation: disconnect the inter-Mac USB cable, connect the
+unlocked phone to the target's right-hand USB-C socket with a data cable.
+Tethering may remain unavailable until host enumeration. No `minimal` command
+has been issued and no live host-overlay result is claimed.
+
 DELIVERED CHECKSUMS VERIFIED: user reports all four manifest checks returned
 OK. Next is the runner's explicit `dry` mode: it temporarily loads only the
 diagnostic overlay module, reads five PMGR power states, applies no device-tree

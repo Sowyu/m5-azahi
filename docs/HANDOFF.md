@@ -2,6 +2,18 @@
 
 ## Immediate state
 
+LATEST PHOTO: dry preflight PASSED, all five PMGR target/actual states ACTIVE;
+diagnostic unloaded, no overlay applied. User is being asked to disconnect
+the inter-Mac USB cable and connect an unlocked phone to the target's RIGHT
+USB-C socket. No live/minimal command issued yet. Allow the phone tethering
+toggle to remain grey until enumeration; do not interpret it alone as failure.
+
+Exact-kernel source supports combining SID bits per DART (so the four overlay
+references do not consume four DART slots), but physical SID routing, PHY
+clear-mask behaviour and PD/VBUS remain experimental. Do not equate dry success
+with full hardware validation. Save user work before a later live test, warn of
+possible hang/power-cycle, and do not auto-retry/unload an applied overlay.
+
 LATEST: user reports four checksum OK results, cwd is the courier directory.
 Next explicit diagnostic-only command (trim output, retain full script log):
 
