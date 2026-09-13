@@ -23,6 +23,51 @@ def function(source, signature):
 
 
 class GlueTest(unittest.TestCase):
+    def test_fixed_host_remove_control_flow(self):
+        source = (HERE / 'dwc3-apple-t6050.c').read_text()
+        remove = function(source, 'static void dwc3_apple_remove(')
+        harness = r'''
+#include <assert.h>
+#include <stdbool.h>
+enum dwc3_apple_state { DWC3_APPLE_PROBE_PENDING, DWC3_APPLE_NO_CABLE,
+                       DWC3_APPLE_HOST, DWC3_APPLE_DEVICE };
+struct dwc3 { int unused; };
+struct device { int unused; };
+struct platform_device { struct device dev; struct dwc3 *data; };
+struct dwc3_apple { struct dwc3 dwc; int lock; void *reset, *role_sw;
+                   enum dwc3_apple_state state; };
+static int removes, resets, exits, unregisters, locks;
+static struct dwc3 *platform_get_drvdata(struct platform_device *p) { return p->data; }
+static struct dwc3_apple *to_dwc3_apple(struct dwc3 *d) { return (void *)d; }
+#define guard(x) lock_guard
+static void lock_guard(int *p) { ++locks; }
+static bool device_property_read_bool(struct device *d, const char *s) { return true; }
+static void dwc3_core_remove(struct dwc3 *d) { ++removes; }
+static int reset_control_assert(void *r) { ++resets; return 0; }
+static void usb_role_switch_unregister(void *s) { ++unregisters; }
+static int dwc3_apple_exit(struct dwc3_apple *a) { ++exits; return 0; }
+'''
+        cases = r'''
+int main(void) {
+    struct dwc3_apple a = {.state=DWC3_APPLE_HOST};
+    struct platform_device p = {.data=&a.dwc};
+    dwc3_apple_remove(&p);
+    assert(removes == 1 && resets == 1 && locks == 1);
+    assert(exits == 0 && unregisters == 0);
+    a.state = DWC3_APPLE_PROBE_PENDING;
+    dwc3_apple_remove(&p);
+    assert(removes == 1 && resets == 2 && locks == 2);
+    assert(exits == 0 && unregisters == 0);
+    return 0;
+}
+'''
+        with tempfile.TemporaryDirectory(prefix='usb-remove-test-') as temporary:
+            path = Path(temporary)
+            (path / 'test.c').write_text(harness + remove + cases)
+            subprocess.run(['/usr/bin/cc', '-std=c11', '-Wall', '-Werror',
+                            str(path / 'test.c'), '-o', str(path / 'test')], check=True)
+            subprocess.run([str(path / 'test')], check=True)
+
     def test_real_init_failure_and_success_paths(self):
         source = (HERE / 'dwc3-apple-t6050.c').read_text()
         init = function(source, 'static int dwc3_apple_init(')
