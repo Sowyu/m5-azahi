@@ -158,6 +158,7 @@ struct dchid_iface {
 	uint8_t tx_seq;
 	bool deferred;
 	bool starting;
+	bool start_retried;
 	bool open;
 	struct completion ready;
 
@@ -490,11 +491,13 @@ static int dchid_request_gpio(struct dchid_iface *iface)
 	iface->gpio = devm_gpiod_get_index(iface->dchid->dev, prop_name, 0, GPIOD_OUT_LOW);
 
 	if (IS_ERR_OR_NULL(iface->gpio)) {
-		dev_err(iface->dchid->dev, "Failed to request GPIO %s-gpios\n", prop_name);
+		dev_err(iface->dchid->dev, "Failed to request GPIO %s-gpios: %ld\n",
+			prop_name, PTR_ERR(iface->gpio));
 		iface->gpio = NULL;
 		return -1;
 	}
 
+	dev_info(iface->dchid->dev, "Acquired GPIO %s-gpios\n", prop_name);
 	return 0;
 }
 
@@ -588,6 +591,17 @@ static int dchid_open(struct hid_device *hdev)
 
 		if (!wait_for_completion_timeout(&iface->ready, msecs_to_jiffies(START_TIMEOUT_MS))) {
 			dev_err(iface->dchid->dev, "iface %s start timed out\n", iface->name);
+			/*
+			 * ponytail: one AFE bootload failure currently poisons the
+			 * whole boot, because dchid_start_interface() returned 0 and
+			 * left ->starting latched. Allow exactly one more attempt so
+			 * userspace can retry the open; drop this and drive
+			 * apple,afe-reset-gpios directly if the retry also fails.
+			 */
+			if (!iface->start_retried) {
+				iface->start_retried = true;
+				iface->starting = false;
+			}
 			return -ETIMEDOUT;
 		}
 	}
@@ -897,6 +911,9 @@ static void dchid_handle_gpio(struct dockchannel_hid *dchid, void *data, size_t 
 	if (length < sizeof(*cmd))
 		return;
 
+	dev_info(dchid->dev, "GPIO event: iface=%d gpio=%d cmd=%d\n",
+		 cmd->iface, cmd->gpio, cmd->cmd);
+
 	if (cmd->iface >= MAX_INTERFACES || !(iface = dchid->ifaces[cmd->iface])) {
 		dev_err(dchid->dev, "Got GPIO command for bad inteface %d\n", cmd->iface);
 		goto err;
@@ -935,6 +952,8 @@ err:
 	ack->type = CMD_ACK_GPIO_CMD;
 	ack->retcode = retcode;
 	memcpy(ack->cmd, data, length);
+
+	dev_info(dchid->dev, "GPIO ack: retcode 0x%x\n", retcode);
 
 	if (dchid_comm_cmd(dchid, ack, sizeof(*ack) + length) < 0)
 		dev_err(dchid->dev, "Failed to ACK GPIO command\n");
