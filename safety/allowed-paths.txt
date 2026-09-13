@@ -351,3 +351,13 @@ usb-driver/courier-vm-init.sh
 usb-driver/test-courier-vm.py
 usb-driver/test-transfer-v6.py
 usb-driver/proxy-test-v6.py
+usb-driver/pd-backport/README.md
+usb-driver/pd-backport/check-build.sh
+usb-driver/pd-backport/vendor/SHA256SUMS
+usb-driver/pd-backport/vendor/tipd/Kconfig
+usb-driver/pd-backport/vendor/tipd/Makefile
+usb-driver/pd-backport/vendor/tipd/core.c
+usb-driver/pd-backport/vendor/tipd/spmi.c
+usb-driver/pd-backport/vendor/tipd/tps6598x.h
+usb-driver/pd-backport/vendor/tipd/trace.c
+usb-driver/pd-backport/vendor/tipd/trace.h
