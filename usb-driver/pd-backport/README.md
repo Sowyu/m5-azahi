@@ -1,8 +1,58 @@
-# SN201202x backport feasibility check — not a runnable driver
+# SPMI4 transport prototype and SN201202x backport — host tests only
 
 2026-09-13. Host-only compile audit for USB2 tethering on T6050/J714s.
 No loadable module, overlay, installer, target access or hardware writes.
 The existing three-module USB candidate and delivery manifest are unchanged.
+
+## New: default-disabled polling controller prototype
+
+`spmi4-transport.h` implements bounded FIFO transactions using the audited
+generation-4 offsets. `spmi4-controller.c` adapts this to Linux SPMI read,
+write and command callbacks, serializing complete transactions with a mutex.
+Only right-port HPM SID 12 is accepted; reset, shutdown, long-register commands,
+queue flushing and interrupt-mask writes are deliberately absent.
+
+Both `allow_probe` and `allow_transactions` default false and are read-only
+module parameters. Probe additionally checks J714s, an explicit generation-4
+DT property and the exact saved right-port controller resource. These checks
+are containment, NOT proof of bus ownership, power state or hardware safety.
+No overlay or loadable module is provided. Do not attempt live installation.
+
+Reproduce the host tests with `sh test-spmi4.sh` (Clang with AddressSanitizer
+and UndefinedBehaviorSanitizer required). The tests exercise the actual shared
+C transport with fake IO, not a separately reimplemented protocol:
+
+- Independently specified wire words for selector, register read/write,
+  extended read/write, sleep and wakeup.
+- All 16 extended lengths at both legal address boundaries, little-endian
+  payload packing and zero padding.
+- Invalid arguments and unsupported SIDs/commands rejected before IO.
+- Busy FIFO, full TX, absent/partial replies, wrong SID/opcode, bad parity,
+  ACK mismatch, nonzero padding and unexpected trailing FIFO data.
+- No partial read output, no draining unexpected replies, permanent failure
+  latch within the controller instance, and no IO after that latch.
+- One shared 1,000-delay transaction budget; delayed success and partial-read
+  timeout do not replenish it. This is a finite polling bound, not a hard
+  wall-clock deadline: kernel delays and scheduling can run longer.
+
+All four test groups pass under ASan/UBSan. `bash check-build.sh controller`
+also passes compilation, relocatable linking and modpost against the exact
+target headers/exports. No `.ko` is built and no target access occurs.
+
+The command format and strict reply checks follow
+[m1n1's pinned SPMI reference](https://github.com/AsahiLinux/m1n1/blob/5d6df45b2b7f9f1f925e469304122cfdd65694ba/proxyclient/m1n1/hw/spmi.py).
+Polling deliberately clears ALERT; acceptance on this hardware is untested.
+Initial and final FIFO state must be idle; a mismatch stops the instance,
+even if a later hardware state might have recovered. Rebinding is not a safe
+recovery procedure and must not be used to bypass a poisoned controller.
+
+**Still missing:** ownership/power and lifecycle validation, HPM logical
+selector/wake completion handling, and a justified IRQ or polling integration
+for the PD client. There is no IRQ domain, so the existing upstream SN201202x
+client cannot simply be bound to this prototype. Its probe changes device
+state. No phone enumeration, VBUS measurement or network success is claimed.
+Next work is that HPM integration audit, not another user reboot or rerunning
+the currently applied USB overlay. Daily macOS remains untouched.
 
 Latest native report: `/sys/class/typec` is absent and the SPMI device directory
 was reported as "0" (interpreted as `ls -l`'s `total 0`, not a device named 0).
