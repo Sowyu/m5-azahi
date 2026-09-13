@@ -1,0 +1,4 @@
+# Private bring-up: only the verified Linux Btrfs filesystem is mounted.
+# EFI and separate /boot remain unconfigured; host still supplies kernel/initrd.
+UUID=PRIVATE-UUID-REMOVED / btrfs defaults,subvol=root,compress=zstd:1,nodiscard 0 0
+UUID=PRIVATE-UUID-REMOVED /home btrfs defaults,subvol=home,compress=zstd:1,nodiscard 0 0

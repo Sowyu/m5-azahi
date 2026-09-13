@@ -1,0 +1,14 @@
+// Native RAM-root input test. No SSD, hypervisor UART or virtual devices.
+#include "t6050-j714s-hv-input-sid0.dts"
+
+/ {
+	chosen {
+		/delete-property/ stdout-path;
+		bootargs = "console=tty0 fbcon=nodefer fbcon=font:TER16x32 ignore_loglevel maxcpus=1 arm64.nomte arm64.nosme cpuidle.off=1 pd_ignore_unused";
+	};
+};
+
+&serial0 {
+	status = "disabled";
+	/delete-property/ power-domains;
+};

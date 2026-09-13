@@ -1,0 +1,134 @@
+// SPDX-License-Identifier: GPL-2.0+ OR MIT
+/*
+ * Apple MacBook Pro (14-inch, M5 Pro, 2025) — j714sap / Mac17,9
+ *
+ * HYPERVISOR variant. Booted as an m1n1-hv guest, NOT bare metal.
+ *
+ * Under hv, Linux runs at EL1 and m1n1 stays at EL2. m1n1 traps the whole
+ * uart0 MMIO page (src/hv_vuart.c:144) and emulates a Samsung/s5l UART,
+ * streaming guest console bytes out over the USB proxy link. The real,
+ * power-gated uart0 hardware is never touched - which is why serial0 is
+ * enabled here even though bare-metal boots must keep it disabled.
+ *
+ * uart0 base 0x505200000 and IRQ 1359 verified against adt-real-t6050.bin.
+ * PMGR UART0 is hooked by hv map_essential(), so power-domains is safe.
+ */
+
+/dts-v1/;
+
+#include "t6050-min.dtsi"
+
+/ {
+	compatible = "apple,j714s", "apple,t6050", "apple,arm-platform";
+	model = "Apple MacBook Pro (14-inch, M5 Pro, 2025)";
+
+	aliases {
+		serial0 = &serial0;
+	};
+
+	chosen {
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+
+		stdout-path = "serial0:1500000";
+
+		/*
+		 * earlycon is given explicitly rather than bare, so it works
+		 * even if stdout-path resolution fails - it needs no DT at all.
+		 * maxcpus=1 for the first hv run: one variable at a time.
+		 *
+		 * arm64.nomte + arm64.nosme: M5 exposes MTE and SME; the m1n1 hv
+		 * does not configure HCR.ATA/CPTR for them, so every GCR_EL1 /
+		 * TPIDR2_EL0 access traps to a host Python round-trip - hundreds
+		 * were seen in hv-run2.log, one per context switch. Disabling the
+		 * features removes the storm entirely.
+		 * cpuidle.off=1: keeps cpuidle-apple from writing CYC_OVRD in the
+		 * idle loop - the hv treats bit0 writes as "CPU shutting down"
+		 * (hv/__init__.py handle_msr) and would tear down cpu0.
+		 * pd_ignore_unused: inert while the pmgr nodes are deleted below;
+		 * insurance against the genpd late power-off sweep if they return.
+		 * console=tty0 + fbcon=nodefer: mirror the log to the panel via
+		 * simpledrm (DEFERRED_TAKEOVER=y needs nodefer). ttySAC0 stays
+		 * last, so it remains the preferred console.
+		 */
+		/*
+		 * rd.shell: the Asahi initramfs is dracut and will not find a root
+		 * device (there is no storage driver yet). rd.shell makes it drop to
+		 * an emergency shell and say why, instead of panicking silently.
+		 * We have no keyboard into the guest yet, so this run is about
+		 * READING how far userspace gets, not typing at it.
+		 */
+		bootargs = "earlycon=s5l,0x505200000 console=tty0 console=ttySAC0 keep_bootcon debug ignore_loglevel maxcpus=1 arm64.nomte arm64.nosme cpuidle.off=1 pd_ignore_unused fbcon=nodefer rd.shell rd.info";
+
+		framebuffer0: framebuffer@0 {
+			compatible = "apple,simple-framebuffer", "simple-framebuffer";
+			reg = <0 0 0 0>; /* filled by m1n1 */
+			/* format properties filled by m1n1 */
+			status = "disabled";
+		};
+	};
+
+	/* No /reserved-memory: see t6050-j714s-serial.dts for why. */
+
+	memory@10000000000 {
+		device_type = "memory";
+		reg = <0x100 0 0x10 0>; /* filled by m1n1 */
+	};
+};
+
+&serial0 {
+	status = "okay";
+	/delete-property/ power-domains;
+};
+
+/*
+ * HV GUEST ONLY: remove the entire PMGR power-domain tree.
+ *
+ * Evidence from hv-run2.log: apple-pmgr-pwrstate probed and immediately
+ * issued a power-state write (ps_atc0_common, 0x280600208 <- 0x100000ff,
+ * the driver's ACTIVE+AUTO_ENABLE flush for domains found on). The host's
+ * replay of that write SErrored the machine. Beyond probe-time flushes,
+ * genpd's late power-off sweep would write ~190 non-always-on PS registers
+ * straight to hardware (only 11 are hooked by map_essential), powering off
+ * real devices the HOST is using (dockchannel console, display, SEP, ANS).
+ *
+ * Under the hv every needed device is already powered by the host and the
+ * uart is emulated, so the guest needs no power management at all. Deleting
+ * the providers (and every power-domains reference, else those probes
+ * would -EPROBE_DEFER forever) removes the whole class in one move.
+ * Bare-metal DTBs are unaffected - this file is the only one changed.
+ */
+/delete-node/ &pmgr0;
+/delete-node/ &pmgr1;
+/delete-node/ &pmgr2;
+/delete-node/ &pmgr3;
+/delete-node/ &pmgr4;
+/delete-node/ &pmgr5;
+
+&aic { /delete-property/ power-domains; };
+&pinctrl_nub { /delete-property/ power-domains; };
+&pinctrl_ap { /delete-property/ power-domains; };
+&i2c0 { /delete-property/ power-domains; };
+&i2c1 { /delete-property/ power-domains; };
+&i2c2 { /delete-property/ power-domains; };
+&i2c3 { /delete-property/ power-domains; };
+&i2c4 { /delete-property/ power-domains; };
+
+/*
+ * RAM-rootfs era: the guest now has a FULL module set, so udev coldplug
+ * probes every enabled DT node. With pmgr deleted these blocks cannot be
+ * powered on, and gpio0 (pinctrl_ap, 0x29c000000) is powered OFF: the
+ * pinctrl-apple-gpio probe's first regmap read SError'd even the host
+ * (hv-ramroot run 2, ESR 0x92000410, FAR 0x29c0001c0). Disable every
+ * MMIO node the guest cannot power. serial0 is hv-emulated; AIC and WDT
+ * are exercised by m1n1 itself, i.e. proven powered.
+ */
+&pinctrl_nub { status = "disabled"; };
+&pinctrl_aop { status = "disabled"; };
+&pinctrl_ap { status = "disabled"; };
+&i2c0 { status = "disabled"; };
+&i2c1 { status = "disabled"; };
+&i2c2 { status = "disabled"; };
+&i2c3 { status = "disabled"; };
+&i2c4 { status = "disabled"; };

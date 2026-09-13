@@ -1,0 +1,12 @@
+[Unit]
+Description=Native RAM boot input checkpoint on the physical panel
+After=systemd-udev-trigger.service
+Before=getty@tty1.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash /usr/local/bin/native-input-check
+TimeoutStartSec=45
+
+[Install]
+WantedBy=multi-user.target

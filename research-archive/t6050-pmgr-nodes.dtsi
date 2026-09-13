@@ -1,0 +1,48 @@
+pmgr0: power-management@280600000 {
+	compatible = "apple,t6050-pmgr", "apple,t8103-pmgr", "syscon", "simple-mfd";
+	#address-cells = <1>;
+	#size-cells = <1>;
+
+	reg = <0x2 0x80600000 0 0x4000>;
+};
+
+pmgr1: power-management@280900000 {
+	compatible = "apple,t6050-pmgr", "apple,t8103-pmgr", "syscon", "simple-mfd";
+	#address-cells = <1>;
+	#size-cells = <1>;
+
+	reg = <0x2 0x80900000 0 0x4000>;
+};
+
+pmgr2: power-management@288300000 {
+	compatible = "apple,t6050-pmgr", "apple,t8103-pmgr", "syscon", "simple-mfd";
+	#address-cells = <1>;
+	#size-cells = <1>;
+
+	reg = <0x2 0x88300000 0 0xc000>;
+};
+
+pmgr3: power-management@2300e80000 {
+	compatible = "apple,t6050-pmgr", "apple,t8103-pmgr", "syscon", "simple-mfd";
+	#address-cells = <1>;
+	#size-cells = <1>;
+
+	reg = <0x23 0xe80000 0 0x4000>;
+};
+
+pmgr4: power-management@2380600000 {
+	compatible = "apple,t6050-pmgr", "apple,t8103-pmgr", "syscon", "simple-mfd";
+	#address-cells = <1>;
+	#size-cells = <1>;
+
+	reg = <0x23 0x80600000 0 0xc000>;
+};
+
+pmgr5: power-management@2388300000 {
+	compatible = "apple,t6050-pmgr", "apple,t8103-pmgr", "syscon", "simple-mfd";
+	#address-cells = <1>;
+	#size-cells = <1>;
+
+	reg = <0x23 0x88300000 0 0x4000>;
+};
+

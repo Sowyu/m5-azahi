@@ -13,7 +13,7 @@ a daily-use machine. Never use the reference disk geometry on another SSD.**
 | --- | --- |
 | Native Linux / SSD root | Native Fedora KDE from Btrfs SSD root demonstrated |
 | Autonomous boot | Aligned v3 worked; currently installed v4 has a known packaging regression |
-| Corrected v5 | Offline verified; RAM-only test reached Linux handoff; desktop/courier confirmation pending |
+| Corrected v5 | Offline verified; RAM handoff sent; user reports KDE accessible but courier directory missing |
 | CPU | One core; secondary-core startup unresolved |
 | Graphics | Software rendering; no native GPU acceleration |
 | Keyboard | Working, with past compositor-related lag |
@@ -34,6 +34,9 @@ Read [PROGRESS.md](PROGRESS.md) and [the handoff](docs/HANDOFF.md) before contin
   this is **not** a complete m1n1 checkout.
 - `probe/`, `ramroot/`: selected SSD-root packaging and CPIO tooling.
 - `docs/`: current findings, safety constraints, test instructions and publication scope.
+- [`research-archive/`](research-archive/README-PUBLIC-ARCHIVE.md): 284 additional
+  source/configuration/history snapshots, including earlier CPU probes,
+  device trees, Recovery tooling and isolated loader integration changes.
 
 This is a **reviewed source snapshot, not a complete reproducible distribution**.
 Private firmware, original device trees, exact kernel build inputs, installed

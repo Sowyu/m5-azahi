@@ -1,0 +1,28 @@
+// RAM-root native read-only SSD diagnostic. Requires the matching modules.
+// No PMGR/reset providers: verified loader-prepared power stays unchanged.
+#include "t6050-j714s-native-input.dts"
+
+&soc {
+	sart_ans: sart@41dc50000 {
+		compatible = "azahi,j714s-sart-v4";
+		reg = <0x4 0x1dc50000 0 0xc000>;
+	};
+	ans_mbox: mbox@419608000 {
+		compatible = "apple,t6050-asc-mailbox", "apple,asc-mailbox-v4";
+		reg = <0x4 0x19608000 0 0x4000>;
+		interrupt-parent = <&aic>;
+		interrupts = <0 1347 4>, <0 1348 4>, <0 1349 4>, <0 1350 4>;
+		interrupt-names = "send-empty", "send-not-empty", "recv-empty", "recv-not-empty";
+		#mbox-cells = <0>;
+	};
+	nvme: nvme@45dcc0000 {
+		compatible = "azahi,j714s-nvme-readonly";
+		reg = <0x4 0x5dcc0000 0 0x60000>, <0x4 0x19600000 0 0x4000>,
+		      <0x4 0x1dcc0000 0 0x60000>;
+		reg-names = "nvme", "ans", "nvmmu";
+		interrupt-parent = <&aic>;
+		interrupts = <0 2338 4>;
+		mboxes = <&ans_mbox>;
+		apple,sart = <&sart_ans>;
+	};
+};

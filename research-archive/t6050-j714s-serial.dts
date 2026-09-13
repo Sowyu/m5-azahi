@@ -1,0 +1,70 @@
+// SPDX-License-Identifier: GPL-2.0+ OR MIT
+/*
+ * Apple MacBook Pro (14-inch, M5 Pro, 2025) — j714sap / Mac17,9
+ *
+ * Boot-minimal board file. Untested on hardware.
+ */
+
+/dts-v1/;
+
+#include "t6050-min.dtsi"
+
+/ {
+	compatible = "apple,j714s", "apple,t6050", "apple,arm-platform";
+	model = "Apple MacBook Pro (14-inch, M5 Pro, 2025)";
+
+	aliases {
+		serial0 = &serial0;
+	};
+
+	chosen {
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+
+		/*
+		 * Console MUST be tty0 (the framebuffer console). stdout-path =
+		 * "serial0" sends the kernel log to the physical UART, which is
+		 * not reachable on this machine — the screen then shows only the
+		 * boot logo and no text.
+		 * m1n1 does not set /chosen/bootargs, so this is the whole cmdline.
+		 */
+		/*
+		 * maxcpus=1: Linux runs smp_init() BEFORE driver initcalls, so
+		 * secondary CPU bringup happens before DRM/fbcon exists. If it
+		 * hangs there, the screen stays blank with no way to see why.
+		 * m1n1 already reports CPU start failures on T6050, so boot one
+		 * core first — we can always add the rest back once there's a
+		 * console to read.
+		 */
+		bootargs = "console=tty0 fbcon=nodefer keep_bootcon pd_ignore_unused clk_ignore_unused ignore_loglevel debug maxcpus=1";
+
+		framebuffer0: framebuffer@0 {
+			compatible = "apple,simple-framebuffer", "simple-framebuffer";
+			reg = <0 0 0 0>; /* filled by m1n1 */
+			/* power-domains removed for bring-up: display is already on,
+			 * and the reference makes simpledrm defer on our genpd chain */
+			/* format properties filled by m1n1 */
+			status = "disabled";
+		};
+	};
+
+	/*
+	 * NO /reserved-memory node: with one present, m1n1 adds firmware
+	 * regions (e.g. flash@10004618000) back into the RAM map - and those
+	 * live INSIDE the 1.7GB protected carveout at 0x10004000000, which
+	 * SErrors on access. Leaving it out keeps them out of the memory map.
+	 */
+
+	memory@10000000000 {
+		device_type = "memory";
+		reg = <0x100 0 0x10 0>; /* filled by m1n1 */
+	};
+};
+
+&serial0 {
+	/* T6050 bring-up: keep DISABLED. SERIAL_SAMSUNG=y probes this
+	 * before simpledrm (tty/ links before gpu/), and m1n1 never powers
+	 * uart0 - touching gated MMIO SErrors this SoC. */
+	status = "disabled";
+};

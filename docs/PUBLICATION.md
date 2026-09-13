@@ -15,6 +15,16 @@ never run `git add .` in the private bring-up workspace. Before each commit:
 
 This is a development workflow, not an unattended background uploader.
 
+## Expanded archive
+
+The user subsequently requested all project material, with personal photos
+and private data excluded. `research-archive/` now contains 284 historical
+source/configuration/note snapshots; private values were redacted from 89 files.
+This includes Recovery/proxy **source for reference**, not operational pins,
+backups or ready-to-run installers. The exclusions below describe the original
+curated tree; unreviewed probes are now represented by the reviewed, redacted
+archive where listed in `research-archive-manifest.json`.
+
 ## Intentionally excluded
 
 - Apple firmware, kernelcache/DriverKit caches, raw ADTs and device dumps.

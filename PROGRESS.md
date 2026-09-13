@@ -3,6 +3,29 @@
 This is the public, privacy-reviewed checkpoint. Historical private notes may
 contain superseded plans; the state below takes precedence.
 
+## Latest user report and expanded publication
+
+The user reports that KDE is accessible and that listing
+`/run/azahi-usb-20260913` returned a cannot-access error. Konsole within KDE is
+the correct place to run the command; a separate text terminal is not required.
+Courier delivery is therefore **not established**. Need the exact error/log;
+do not infer the running image identity solely from the desktop appearing.
+
+Read-only inspection of the fixed host image confirms the courier script,
+systemd drop-in, all five payload files, findmnt and static BusyBox are present.
+The next target diagnostic is:
+
+```sh
+journalctl -b -u initrd-switch-root --no-pager -n 15
+```
+
+Do not reboot or reinstall yet. No target changes were made during publication.
+
+At the user's request, publication now also includes 284 historical project
+source/configuration/note files. Personal/private data remains excluded, with
+identifying details redacted from 89 files. See the research archive manifest;
+this is not a 56 GB binary workspace backup.
+
 ## Current boot incident
 
 The known-working **aligned v3** booted native KDE from the SSD without a helper

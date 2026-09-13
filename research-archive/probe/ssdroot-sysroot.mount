@@ -1,0 +1,14 @@
+[Unit]
+Description=Internal Linux root protected by fixed-LBA NVMe guard
+DefaultDependencies=no
+Requires=ssdroot-prepare.service
+After=ssdroot-prepare.service
+Before=initrd-root-fs.target
+OnFailure=emergency.target
+
+[Mount]
+What=/dev/disk/by-partuuid/PRIVATE-UUID-REMOVED
+Where=/sysroot
+Type=btrfs
+Options=rw,subvol=root,nodiscard
+TimeoutSec=90

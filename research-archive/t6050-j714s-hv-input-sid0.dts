@@ -1,0 +1,13 @@
+// Diagnostic variant: use the stream named by this board's ADT mapper-mtp.
+// The SID1 baseline remains in t6050-j714s-hv-input.dts for comparison.
+#include "t6050-j714s-hv-input.dts"
+
+&mtp {
+	iommus = <&mtp_dart 0>;
+};
+
+&mtp_fifo {
+	input@0 {
+		iommus = <&mtp_dart 0>;
+	};
+};

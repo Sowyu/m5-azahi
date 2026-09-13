@@ -1,0 +1,13 @@
+[Unit]
+Description=Assemble RAM-backed root filesystem (T6050 bring-up)
+DefaultDependencies=no
+ConditionPathExists=/ramroot
+After=systemd-udevd.service systemd-modules-load.service
+Before=initrd-root-device.target initrd-root-fs.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+StandardOutput=journal+console
+StandardError=journal+console
+ExecStart=/bin/bash /ramroot-setup.sh

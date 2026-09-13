@@ -1,0 +1,21 @@
+exec /ramroot-setup.sh /PRIVATE-USER/azahi-port/ramroot/ramroot-setup.sh
+file /etc/systemd/system/ramroot.service /PRIVATE-USER/azahi-port/ramroot/ramroot.service
+slink /etc/systemd/system/initrd-root-fs.target.wants/ramroot.service ../ramroot.service
+split /ramroot/root.img /PRIVATE-USER/azahi-port/ramroot/work-kde/root.img 3072
+dir /ramroot/sysroot-overlay/usr
+dir /ramroot/sysroot-overlay/usr/local
+dir /ramroot/sysroot-overlay/usr/local/bin
+dir /ramroot/sysroot-overlay/etc
+dir /ramroot/sysroot-overlay/etc/modules-load.d
+dir /ramroot/sysroot-overlay/etc/systemd
+dir /ramroot/sysroot-overlay/etc/systemd/system
+dir /ramroot/sysroot-overlay/etc/systemd/system/serial-getty@ttySAC0.service.d
+dir /ramroot/sysroot-overlay/etc/systemd/system/getty@tty1.service.d
+dir /ramroot/sysroot-overlay/etc/systemd/system/multi-user.target.wants
+dir /ramroot/sysroot-overlay/root
+file /ramroot/sysroot-overlay/usr/local/bin/uinject /PRIVATE-USER/azahi-port/ramroot/work-kde/sysroot-overlay/usr/local/bin/uinject
+file /ramroot/sysroot-overlay/etc/modules-load.d/uinput.conf /PRIVATE-USER/azahi-port/ramroot/work-kde/sysroot-overlay/etc/modules-load.d/uinput.conf
+file /ramroot/sysroot-overlay/etc/systemd/system/uinject.service /PRIVATE-USER/azahi-port/ramroot/work-kde/sysroot-overlay/etc/systemd/system/uinject.service
+file /ramroot/sysroot-overlay/etc/systemd/system/serial-getty@ttySAC0.service.d/autologin.conf /PRIVATE-USER/azahi-port/ramroot/work-kde/sysroot-overlay/etc/systemd/system/serial-getty@ttySAC0.service.d/autologin.conf
+file /ramroot/sysroot-overlay/etc/systemd/system/getty@tty1.service.d/autologin.conf /PRIVATE-USER/azahi-port/ramroot/work-kde/sysroot-overlay/etc/systemd/system/getty@tty1.service.d/autologin.conf
+file /ramroot/sysroot-overlay/root/.bash_profile /PRIVATE-USER/azahi-port/ramroot/work-kde/sysroot-overlay/root/.bash_profile

@@ -2,6 +2,17 @@
 
 ## Immediate state
 
+LATEST: user reports KDE accessible but the courier directory cannot be
+accessed from Konsole. Konsole is a valid target terminal. Host image inspection
+finds the courier hook and assets present; inspect the current boot journal:
+
+```sh
+journalctl -b -u initrd-switch-root --no-pager -n 15
+```
+
+Do not treat the older listing request below as a successful result or ask for
+a reboot merely to get a text terminal. The actual service output is pending.
+
 A RAM-corrected v5 Linux handoff was sent. The target's current screen and the
 presence of `/run/azahi-usb-20260913` are awaiting confirmation. Persistent v4
 still fails the loader's initrd-size check. Do not ask for a casual reboot.
