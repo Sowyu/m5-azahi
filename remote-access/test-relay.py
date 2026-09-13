@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+import socket
 import asyncssh
 
 HERE = Path(__file__).resolve().parent
@@ -16,6 +17,11 @@ spec.loader.exec_module(relay)
 
 class RelayTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
+        self.assertEqual(relay.FORWARD_PORT, 22022)
+        with socket.socket() as reservation:
+            reservation.bind(('127.0.0.1', 0))
+            self.forward_port = reservation.getsockname()[1]
+        relay.FORWARD_PORT = self.forward_port
         self.temp = tempfile.TemporaryDirectory(prefix='azahi-relay-test-')
         self.folder = Path(self.temp.name)
         relay.initialize(self.folder, '127.0.0.1', '-'.join('1' * n for n in (8, 4, 4, 4, 12)))
@@ -31,6 +37,7 @@ class RelayTests(unittest.IsolatedAsyncioTestCase):
         self.server.close()
         await self.server.wait_closed()
         self.temp.cleanup()
+        relay.FORWARD_PORT = 22022
 
     async def connect(self, user, **kwargs):
         return await asyncssh.connect('127.0.0.1', self.port, username=user,
@@ -52,7 +59,7 @@ class RelayTests(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(asyncssh.ChannelOpenError):
                 await conn.open_connection('127.0.0.1', 22)
             with self.assertRaises(asyncssh.ChannelListenError):
-                await conn.forward_remote_port('127.0.0.1', 22022, '127.0.0.1', 22)
+                await conn.forward_remote_port('127.0.0.1', self.forward_port, '127.0.0.1', 22)
             result = await conn.run('bootstrap', check=True)
             compile(result.stdout, '<bootstrap>', 'exec')
             self.assertNotIn(self.state.config['password'], result.stdout)
@@ -67,7 +74,7 @@ class RelayTests(unittest.IsolatedAsyncioTestCase):
         async with await self.connect('tunnel', client_keys=[self.folder / 'tunnel_key']) as conn:
             self.assertEqual((await conn.run('id')).exit_status, 1)
             with self.assertRaises(asyncssh.ChannelListenError):
-                await conn.forward_remote_port('127.0.0.1', 22022, '127.0.0.1', 22)
+                await conn.forward_remote_port('127.0.0.1', self.forward_port, '127.0.0.1', 22)
             native_key = asyncssh.generate_private_key('ssh-ed25519')
             value = dict(key=native_key.export_public_key().decode().strip(),
                          runtime='/run/azahi-remote-TEST', tag=self.state.config['tag'])
@@ -77,7 +84,7 @@ class RelayTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(relay.State(self.folder).registration, value)
             value['key'] = asyncssh.generate_private_key('ssh-ed25519').export_public_key().decode().strip()
             self.assertEqual((await conn.run('register', input=json.dumps(value))).exit_status, 1)
-            for host, port in [('0.0.0.0', 22022), ('', 22022), ('127.0.0.1', 22023)]:
+            for host, port in [('0.0.0.0', self.forward_port), ('', self.forward_port), ('127.0.0.1', 0)]:
                 with self.assertRaises(asyncssh.ChannelListenError):
                     await conn.forward_remote_port(host, port, '127.0.0.1', 22)
             with self.assertRaises(asyncssh.ChannelOpenError):
@@ -90,8 +97,8 @@ class RelayTests(unittest.IsolatedAsyncioTestCase):
             endpoint = await asyncio.start_server(echo, '127.0.0.1', 0)
             try:
                 port = endpoint.sockets[0].getsockname()[1]
-                listener = await conn.forward_remote_port('127.0.0.1', 22022, '127.0.0.1', port)
-                reader, writer = await asyncio.open_connection('127.0.0.1', 22022)
+                listener = await conn.forward_remote_port('127.0.0.1', self.forward_port, '127.0.0.1', port)
+                reader, writer = await asyncio.open_connection('127.0.0.1', self.forward_port)
                 writer.write(b'test'); await writer.drain()
                 self.assertEqual(await asyncio.wait_for(reader.readexactly(4), 5), b'test')
                 writer.close(); await writer.wait_closed()

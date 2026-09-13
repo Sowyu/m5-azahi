@@ -375,3 +375,11 @@ remote-access/bootstrap.py
 remote-access/relay.py
 remote-access/requirements.txt
 remote-access/test-relay.py
+remote-access/persist.py
+usb-driver/pd-backport/hpm-awake.h
+usb-driver/pd-backport/hpm-once.c
+usb-driver/pd-backport/test-hpm-awake.c
+usb-driver/start-native-usb.sh
+usb-driver/azahi-usb.service
+usb-driver/install-native-startup.py
+usb-driver/test-native-startup.py

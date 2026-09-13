@@ -1,4 +1,4 @@
-# Temporary authenticated native access
+# Authenticated native access
 
 This is a task-specific SSH relay for a native Linux laptop behind phone
 tethering NAT. It does not enable the helper's operating-system SSH login,
@@ -39,10 +39,32 @@ product. Four real loopback integration tests cover incorrect credentials,
 host-key mismatch, one-use bootstrap, command/local-forwarding refusal,
 registration pinning, loopback-only remote forwarding and actual data through
 that forward. Run `python test-relay.py` inside the dedicated environment.
-No target is accessed by these tests. Native setup is not yet verified.
+No target is accessed by these tests. The tests use an isolated ephemeral
+forwarding port, so they can run while the production relay is occupied.
+Native key-authenticated access and a live switch to the persisted services
+have now been verified, followed by certificate-validated HTTPS GET success.
 
-Services are temporary and do not survive a reboot. The setup prints their
+Bootstrap services are temporary and do not survive a reboot. The setup prints their
 exact names and a stop command. Stopping the two task services revokes the
 native session; stopping the helper relay closes its listener and forwards.
 Do not delete unrelated keys, configurations, user directories or services.
 No partitions, bootloader, USB driver or macOS volume are modified here.
+
+## Optional persistent services
+
+`persist.py` accepts the verified bootstrap runtime directory, expected private
+Linux root UUID and helper IPv4 as arguments. It refuses preexisting dedicated
+state/units, checks the model/kernel/root and refuses any APFS mount. It copies
+only task-specific state to `/var/lib/azahi-remote`, validates the isolated
+sshd config, and enables `azahi-native-sshd` and `azahi-native-tunnel`.
+It adds the dedicated `azahi-usb-tether` NetworkManager autoconnect profile,
+without replacing the currently active connection. The installer does not
+start conflicting listeners; an attended, rollback-protected live transition
+is a separate step. These services are installed and live-tested on the
+research machine, but cold boot remains untested.
+
+The tunnel needs this helper relay running and reachable at its configured
+address; it is not independent cloud access. The laptop's internet connection
+does not require the helper once native USB initialization works at boot.
+Stopping the persistent tunnel/sshd units and disabling them revokes this
+access path. Keep private state and absence/installation receipts private.

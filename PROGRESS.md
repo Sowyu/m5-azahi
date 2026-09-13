@@ -1,6 +1,49 @@
 # Progress — 2026-09-13
 
-## Latest: native remote-access relay prepared; user bootstrap pending
+## Latest: native SSH and guarded startup installed; cold boot still pending
+
+USB tethering is verified by direct native SSH: DHCP/DNS and interface-bound,
+certificate-validated HTTPS GET and HEAD succeed. The earlier TLS failure
+cleared after clock synchronization. The helper now has task-key-only SSH
+access through a pinned, loopback-only reverse tunnel; no public/LAN root
+listener or global sshd change was made.
+
+Dedicated persistent SSH services were installed, enabled and live-switched
+successfully with rollback protection. A reconnect and HTTPS GET passed.
+The dedicated USB NetworkManager autoconnect profile is saved; the existing
+working connection was not interrupted. chronyd remains enabled. make was
+installed; GCC/toolchain upgrades were deliberately held because the solver
+also wanted core runtime upgrades. No kernel or core runtime upgrade occurred.
+
+A narrow native HPM helper was built against the exact running kernel.
+Live status-only and logical read-only probes both passed; HPM is already in
+S0 and networking remained usable. Its SSPS path is guarded to the previously
+observed disconnected state-7 tuple, with fault latching and no reset/role
+override. Native state-7-to-S0 execution is NOT yet live-tested. Three groups
+of protocol tests pass, including all 32 status-bit deviations and faults.
+
+azahi-usb.service is installed and enabled. Its live already-loaded branch
+preserves the working USB controller and passed; eight mocked startup tests
+cover clean load, partial load, hash/root refusal, poisoned/no-ready state,
+clean refusal recheck, driver failure and missing root hub. Four real
+loopback SSH tests pass on isolated ports. No failed native systemd units;
+all three saved services active and HTTPS GET 200 after installation.
+
+CRITICAL remaining issue: installed boot object is still bad v4, which stops
+in proxy. This Linux session came from corrected v6 RAM handoff. Do not claim
+standalone cold-boot success. The v6 loader needs Linux-paired Recovery
+enrollment, fresh verified backup, user authentication and an attended boot
+test. Do not run the old transfer server unchanged: it targets bad v4.
+For first native HPM cold-boot test, phone should initially be unplugged;
+a connected state-7 partner causes clean refusal rather than unsafe writes.
+
+Preserve the current KDE/USB session. No reboot, APFS mount/write, partition
+change or daily-macOS access was performed for these native installations.
+Photos, generated SSH keys/state, addresses, device IDs and private receipts
+must never be published. Only reviewed source/tests and sanitized results
+belong in the public repository.
+
+## Earlier: native remote-access relay prepared; user bootstrap pending
 
 User approved secure remote access and automatic boot/network startup.
 Phone is confirmed on the same Wi-Fi as the helper. A dedicated SSH relay
