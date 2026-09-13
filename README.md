@@ -32,19 +32,26 @@ a daily-use machine. Never use the reference disk geometry on another SSD.**
 | Component | Evidence so far |
 | --- | --- |
 | Native Linux / SSD root | Native Fedora KDE from Btrfs SSD root demonstrated |
-| Autonomous boot | Installed v6 cold boot reached KDE (user-reported); no new helper payload |
+| Autonomous boot | v6 cold boot reached SSD KDE; native SSH verified, without a new helper payload |
 | Corrected v6 | RAM boot reached KDE; Recovery installation and exact readback verified |
 | CPU | One core; secondary-core startup unresolved |
 | Graphics | Software rendering; no native GPU acceleration |
 | Keyboard | Working, with past compositor-related lag |
 | Trackpad | Working on some boots; intermittent early AFE startup failure |
-| USB tethering | DHCP/DNS/HTTPS worked on the prior boot; cold-boot USB startup failed, with no phone charging |
-| Remote access | Key-authenticated SSH previously verified; currently unavailable while cold-boot USB is diagnosed |
+| USB tethering | Automatic startup and HTTPS verified on one cold boot with USB-C ports empty until KDE |
+| Remote access | Saved SSH services and USB network profile reconnected automatically after cold boot |
 | Wi-Fi | N1/Centauri investigation only; no working Linux driver here |
 | Shutdown | Can stall at poweroff.target; final power-off unresolved |
 
 Read [PROGRESS.md](PROGRESS.md) and [the handoff](docs/HANDOFF.md) before continuing.
 Publication is guarded by [default-deny ignores and index/history checks](docs/PUBLICATION-SAFETY.md).
+
+**Current working boot procedure on the research machine:** leave every USB-C
+socket empty while booting Linux (MagSafe may remain). After KDE loads, connect
+the phone to the right-side USB-C port and enable tethering. Linux-side USB,
+networking and SSH startup then ran automatically in the verified test.
+Cable-connected startup and live USB-controller reload are not reliable; do
+not treat one successful cold boot as general hardware support.
 
 ## Contents
 
