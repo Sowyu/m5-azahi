@@ -363,3 +363,7 @@ usb-driver/pd-backport/vendor/tipd/trace.c
 usb-driver/pd-backport/vendor/tipd/trace.h
 usb-driver/pd-backport/audit-spmi4.py
 usb-driver/pd-backport/no-tbt-switch.patch
+usb-driver/pd-backport/spmi4-transport.h
+usb-driver/pd-backport/spmi4-controller.c
+usb-driver/pd-backport/test-spmi4.c
+usb-driver/pd-backport/test-spmi4.sh

@@ -1,5 +1,26 @@
 # Progress — 2026-09-13
 
+## Latest: SPMI4 polling prototype passes host tests, not live-ready
+
+Implemented a shared C FIFO transport plus a Linux SPMI controller adapter in
+usb-driver/pd-backport. Right-HPM SID only, no reset/shutdown/flush, bounded
+polling, strict reply checks, no partial read output and latched failure.
+Both probe and transactions default disabled. No IRQ domain or DT overlay.
+
+Four host test groups pass under AddressSanitizer/UndefinedBehaviorSanitizer:
+independent command encodings; all extended lengths/address boundaries;
+invalid requests with no IO; and timeout/malformed-reply/failure-latch cases.
+Controller compilation, combined linking and modpost pass against the exact
+target kernel headers. No loadable module, target write or delivery change.
+
+This does NOT fix tethering yet. Next: audit HPM selector/wake completion and
+implement justified polling or IRQ integration, with ownership/power/lifecycle
+review before any live test. Upstream PD probe cannot just bind to this adapter
+and is not read-only. Do not unload the USB overlay or request a casual reboot.
+Current KDE remains v6 RAM handoff; persistent loader remains bad v4. The old
+four-file candidate is checksum-verified on Linux SSD. Daily macOS untouched.
+No new user typing or power cycle is needed at this checkpoint.
+
 ## Latest: native inventory and generation-4 controller gap
 
 User reports /sys/class/typec missing and SPMI devices listing "0", interpreted
