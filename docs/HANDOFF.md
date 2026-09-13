@@ -1,6 +1,57 @@
 # Resume safely
 
-## Latest: live SPMI4/HPM reads succeed; power-state change withheld
+## Latest: system-awake task succeeded; phone charging and host/source confirmed
+
+Cable correlation passed: unplugging only the phone cleared attachment,
+power and data status on the audited right-port HPM. The phone was left
+disconnected for a separately gated SSPS(S0) startup experiment, following
+the pinned upstream SN201202x initialization path. This mode requires the
+exact observed empty-port tuple; the general S0 guard remains unchanged.
+It does not assert that the persistent status bit28 is electrically harmless.
+
+The single task returned zero and system-state readback changed 7 to 0;
+the port remained disconnected. No reset, power-role-swap, forced-device
+task, IRQ-mask write or persistent boot change was issued. After reconnect,
+the user reports charging. Readback: status 0x108280fd, power 0x0f0d,
+data 0x80000073, system state0, task result0. Pinned role definitions now
+confirm host/source. This is physical charging + role evidence, NOT yet
+USB device enumeration, DHCP or working tethering.
+
+Nineteen offline HPM/FFI tests pass, including all 32 one-bit deviations
+from the narrowly permitted disconnected status, incorrect power/data/state,
+and preservation of the default refusal behavior. The fresh-address,
+hash-verified v6 RAM handoff completed for the native tethering test.
+Full original payload hash and every replacement chunk's readback passed;
+the original loader returned success and the expected next stage was verified.
+User was asked to run the preserved SSD candidate and enable phone tethering.
+Permanent v4 boot remains unchanged. Daily macOS remains untouched.
+
+## Earlier: attached-port roles conflict with phone UI; SWDF rejected
+
+An attachment snapshot now reports status 0x1000b41d, power status 0x0f3f,
+data status 0x800000f3 and system state 7. With the pinned tipd definitions,
+these indicate a connected sink/device rather than source/host. However,
+the phone reports "USB controlled by Connected device" already selected.
+Physical cable-to-controller correlation must therefore precede further tasks;
+do not treat the interpretation as a confirmed phone-role diagnosis.
+
+One SWDF data-role request completed with task result 3 (rejected), leaving
+roles/state unchanged. No retry, power-role swap, SSPS, forced-device-policy
+command, reset, IRQ-mask write, disk write or boot change was issued.
+A fresh snapshot confirmed the same values. Proxy remains parked and healthy.
+USB tethering is NOT working or verified.
+
+The host diagnostic now has a separately gated one-shot data-role mode,
+captures task status/result, and passes 16 offline tests. Existing S0 guards
+remain unchanged. Saved firmware contains a forceUSBDeviceMode(false) path
+using UFPf with zero payload, but applicability and active policy are unproven;
+no UFPf command was sent. Do not infer that this justifies bypassing guards.
+
+Fresh RAM layout differs from the old v6 script pins. Loader prefix/function
+verification passed, next-stage entry is zero and no live secondaries were
+found. Do not run the old RAM handoff script unchanged. Daily macOS is untouched.
+
+## Earlier: live SPMI4/HPM reads succeed; power-state change withheld
 
 The helper proxy appeared. Fresh loader/ADT/right-HPM identity passed.
 Controller power 0x0f0000ff and FIFO 0x40004000 were read before bus commands.
