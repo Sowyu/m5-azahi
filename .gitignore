@@ -1,4 +1,37 @@
-# Source-only repository; ignored files still require review before any force-add.
+# Default deny: existing tracked source stays tracked; new files need explicit review.
+# Force-add alone does NOT bypass the independently installed publication guard.
+*
+!*/
+!.gitignore
+
+# Additional explicit exclusions, including case variants.
+*.[bB][iI][nN]
+*.[kK][oO]
+*.[iI][mM][gG]
+*.[pP][lL][iI][sS][tT]
+*.[jJ][pP][gG]
+*.[jJ][pP][eE][gG]
+*.[pP][nN][gG]
+*.[hH][eE][iI][cC]
+*.[pP][eE][mM]
+*.[kK][eE][yY]
+*.im4p
+*.im4m
+*.ipsw
+*.dmg
+*.p12
+*.pfx
+*.sqlite*
+*.db
+*.log
+*.pcap*
+.ssh/
+.aws/
+.config/
+secrets/
+backups/
+captures/
+screenshots/
 .DS_Store
 __pycache__/
 *.pyc

@@ -1,0 +1,57 @@
+# Publication safeguards
+
+The private workspace and public clone now use default-deny `.gitignore`
+policies. Existing tracked files are unaffected; no new file is automatically
+eligible for publication. This is the first layer, not a security boundary.
+
+## Active local enforcement
+
+`safety/install-hooks.sh` installs independent copies of the scanner and exact
+path allowlist under `.git/privacy-guard`. Installed hooks use those copies,
+not whichever scanner happens to be checked out in the working tree.
+The installer refuses to overwrite an existing installed policy.
+
+- Pre-commit checks the **index**, not the working tree.
+- Pre-push checks the index and **every local reachable commit**, including
+  deleted historical secrets, before sending data.
+- Only the intended GitHub repository is accepted as the push destination.
+- Unknown paths fail closed, even after `git add -f`.
+- Images, archives, device dumps, firmware, keys, logs and database formats
+  are blocked by path/type rules. Symlinks and submodules are rejected.
+- Files must be UTF-8 text without binary control bytes, at most 2 MiB each;
+  source trees are capped at 12 MiB and history at 2,000 commits per scan.
+- Content checks reject common credentials, device UUIDs/ECIDs, personal home
+  paths, LAN addresses, serial-port identities and upload capabilities.
+- Diagnostics identify the rule and path, never the matched secret value.
+
+Run the synthetic regression suite with:
+
+```sh
+python3 safety/test-publication.py
+```
+
+For read-only audits:
+
+```sh
+python3 safety/check-publication.py --staged
+python3 safety/check-publication.py --history
+```
+
+## Adding source later
+
+Do not automatically regenerate the installed allowlist from untracked files.
+Review every new path and its content, update the tracked policy, then explicitly
+review/re-enroll the independent local policy. Ordinary source edits to already
+approved paths still undergo content checks. No blanket exceptions for archives.
+
+Hooks are installed in this public clone; Git does not automatically install
+them in new clones. New clones require explicit setup after code review.
+
+## Limits
+
+These controls make accidental publication much harder, not impossible.
+A user with control of Git can disable hooks or use another upload route;
+GitHub web/API uploads are outside local hooks. Pattern scanners cannot detect
+every secret, encoded value or private sentence. Human review remains required.
+The safeguards do not retract anything already published and are not a claim
+that GitHub account-level push protection has been enabled.

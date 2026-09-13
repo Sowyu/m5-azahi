@@ -5,6 +5,18 @@ contain superseded plans; the state below takes precedence.
 
 ## Latest user report and expanded publication
 
+NEW PHOTO: the current boot journal explicitly reports
+`/azahi-usb-stage.sh: line 11: mktemp: command not found`.
+The initrd courier did execute but stopped before creating its staging directory.
+This explains the missing `/run/azahi-usb-20260913`; KDE Konsole was not the
+problem. No corrected courier image has been built or installed yet. The next
+implementation must account for tools actually available in the early boot
+environment (including validating any BusyBox applet option differences).
+
+Publication hardening is being added: default-deny ignores, exact-path allowlist,
+independent installed index/history scan hooks, and synthetic regression tests.
+No private photo is uploaded; only this transcribed diagnostic is recorded.
+
 The user reports that KDE is accessible and that listing
 `/run/azahi-usb-20260913` returned a cannot-access error. Konsole within KDE is
 the correct place to run the command; a separate text terminal is not required.

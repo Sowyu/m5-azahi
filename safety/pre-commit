@@ -1,0 +1,4 @@
+#!/bin/sh
+set -eu
+guard=$(git rev-parse --absolute-git-dir)/privacy-guard
+exec python3 "$guard/check-publication.py" --staged

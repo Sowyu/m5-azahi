@@ -1,0 +1,9 @@
+#!/bin/sh
+set -eu
+case "${2:-}" in
+    https://github.com/Sowyu/m5-azahi.git|git@github.com:Sowyu/m5-azahi.git) ;;
+    *) echo 'PUBLICATION REFUSED: unexpected destination' >&2; exit 1 ;;
+esac
+guard=$(git rev-parse --absolute-git-dir)/privacy-guard
+# Scan ALL local history, not only the final tree: catches secrets added then deleted.
+exec python3 "$guard/check-publication.py" --history
