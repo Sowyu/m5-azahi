@@ -13,7 +13,7 @@ a daily-use machine. Never use the reference disk geometry on another SSD.**
 | --- | --- |
 | Native Linux / SSD root | Native Fedora KDE from Btrfs SSD root demonstrated |
 | Autonomous boot | Aligned v3 worked; currently installed v4 has a known packaging regression |
-| Corrected v5 | Offline verified; RAM handoff sent; user reports KDE accessible but courier directory missing |
+| Corrected v6 | RAM boot reached KDE; all five courier files confirmed present; persistent install pending |
 | CPU | One core; secondary-core startup unresolved |
 | Graphics | Software rendering; no native GPU acceleration |
 | Keyboard | Working, with past compositor-related lag |

@@ -5,6 +5,16 @@ contain superseded plans; the state below takes precedence.
 
 ## Latest user report and expanded publication
 
+V6 COURIER DELIVERY CONFIRMED: the user-provided photo shows KDE Konsole
+listing all five expected files in `/run/azahi-usb-20260913`: three modules,
+`SHA256SUMS`, and `usb-tether-test.sh`. An initial missing-hyphen typo was
+corrected; the correct path succeeds. The photo remains private.
+
+Next verify the delivered manifest in that directory before any module load.
+File presence establishes delivery, not working USB hardware or networking.
+No target checksum result or live USB preflight has been reported yet.
+Persistent v4 remains installed; this successful boot used the v6 RAM handoff.
+
 V6 RAM HANDOFF SENT: after the user restarted into the installed v4 fallback
 proxy, a fresh read-only identification found changed RAM addresses. The new
 session was verified rather than reusing the old pins. A guarded v6 test checked
