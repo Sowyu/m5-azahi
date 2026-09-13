@@ -1,6 +1,29 @@
 # Resume safely
 
-## Latest: v6 cold boot reaches KDE; USB startup FAILED
+## Latest: native HPM wake works; DWC3 live reload fails with -110
+
+On the v6 cold boot, unplugging USB-C cables and loading the native helper
+in awake mode yielded result=0, ready=1, poisoned=0, state=0. Phone charging
+returned. A connected read-only probe matched the prior working session's
+power/data-role tuple, but the phone still had no USB data enumeration.
+
+The isolated DWC3 removal returned quietly; its subsequent probe FAILED:
+controller soft reset timed out (-110), leaving no USB buses. A successful
+insmod exit did not mean the device probe succeeded. Do not repeat this live
+reload as a recovery recipe or unload the applied overlay. PHY/clock/reset
+reinitialization remains a driver limitation to investigate, not a proven fix.
+Four host glue tests pass, including a new actual-remove-function control-flow
+test; these do NOT establish successful physical controller reinitialization.
+
+Next attended test: save work and power off normally, then boot Linux with
+EVERY USB-C socket empty (MagSafe may remain). This avoids the initial
+connected-state refusal and lets the saved service attempt HPM wake before
+first USB-controller initialization. Wait for KDE before plugging the phone.
+No further reset-register experiment or Recovery enrollment is needed for
+this test. Cold-boot tethering is still unverified; prior working-boot proof
+must not be presented as reliable automatic startup.
+
+## Earlier: v6 cold boot reaches KDE; USB startup FAILED
 
 User reports KDE booted after the attended v6 shutdown/startup test, without
 a new helper payload. This is the first reported cold boot of installed v6.
