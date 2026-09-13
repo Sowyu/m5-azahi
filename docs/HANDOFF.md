@@ -2,6 +2,18 @@
 
 ## Immediate state
 
+LATEST LIVE PHOTO: the runner reached the right-controller root hub
+`/sys/devices/platform/soc/382280000.usb/xhci-hcd.0.auto/usb1` after loading
+dependencies and all three candidate modules. User says phone is not charging
+and tethering remains grey. No phone/interface/Internet proof yet. Photo shows
+the script still waiting; final exit result pending.
+
+Do NOT rerun or unload. Allow its bounded wait to finish, unplug/replug the
+phone once, then request `dmesg | tail -n 30`. VBUS/role negotiation is suspected,
+not confirmed. A powered hub or PD changes must not be assumed to solve it.
+Remember the files remain under /run: preserve a verified copy on the guarded
+Linux root before a future reboot if needed, never on the macOS partition.
+
 LATEST: phone connected, tethering grey (controller not enabled yet). First
 attended `minimal` test is being requested after save-work/hang warning:
 
