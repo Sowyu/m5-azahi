@@ -22,7 +22,7 @@ BAD_SUFFIX = re.compile(r'\.(?:bin|ko|o|elf|img|dtb|dtbo|plist|im4p|im4m|ipsw|dm
 BAD_COMPONENTS = {'.git', '.ssh', '.aws', 'secrets', 'private', 'backups',
                   'captures', 'screenshots', 'logs', 'evidence'}
 RULES = [
-    ('private-key', rb'-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY-----'),
+    ('private-key', rb'-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY(?: BLOCK)?-----|b3BlbnNzaC1rZXktdjE[A]'),
     ('github-token', rb'(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})'),
     ('cloud-key', rb'\b(?:AKIA|ASIA)[A-Z0-9]{16}\b'),
     ('api-token', rb'\bsk-(?:proj-|ant-)?[A-Za-z0-9_-]{24,}'),
@@ -32,12 +32,17 @@ RULES = [
     ('flattened-personal-home', rb'[-_](?:Users|home)[-_][A-Za-z0-9_.]+[-_]'),
     ('device-uuid', rb'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'),
     ('private-lan', rb'\b(?:192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})\b'),
+    # Link-local and CGNAT (Tailscale-style) IPv4, IPv6 unique-local and link-local.
+    ('private-net', rb'\b(?:169\.254|100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7]))\.\d{1,3}\.\d{1,3}\b|'
+                    rb'\bf[cd][0-9a-f]{2}:[0-9a-f]{0,4}:|\bfe80::'),
     ('device-ecid', rb'\becid\W*(?:0x)?[0-9a-f]{10,}\b'),
     ('serial-port-id', rb'usbmodem(?!PRIVATE(?:_[0-9]+)?\b)[A-Za-z0-9]{5,}'),
-    ('mac-address', rb'\b(?:[0-9a-f]{2}:){5}[0-9a-f]{2}\b'),
+    ('mac-address', rb'\b(?:[0-9a-f]{2}([:-]))(?:[0-9a-f]{2}\1){4}[0-9a-f]{2}\b|\b[0-9a-f]{4}\.[0-9a-f]{4}\.[0-9a-f]{4}\b'),
     ('upload-capability', rb'/(?:upload|transfer)/[0-9a-f]{16,}'),
     ('url-credentials', rb'https?://[^\s/@:]+:[^\s/@]+@'),
-    ('literal-secret', rb'''(?m)^\s*(?:export\s+)?(?:password|passwd|api_key|access_token|client_secret)\s*=\s*["'][^"'\r\n]{8,}["']\s*$'''),
+    ('literal-secret', rb'''(?m)^\s*(?:export\s+)?(?:password|passwd|api_key|access_token|client_secret)\s*=\s*["'][^"'\r\n]{8,}["']\s*(?:#.*)?$'''),
+    # JSON/YAML form, e.g. the relay's private config.json.
+    ('quoted-secret', rb'''["']?\b(?:password|passwd|secret|token|api_key)["']?\s*:\s*["'][^"'\r\n]{8,}["']'''),
 ]
 
 

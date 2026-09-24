@@ -10,6 +10,7 @@ from pathlib import Path
 import struct
 import subprocess
 import zlib
+if not __debug__: raise SystemExit('Refusing python -O: assert statements here are safety checks')
 
 ROOT = Path(__file__).resolve().parent.parent
 SOURCE = ROOT / 'native-ssdroot-v3-20260906.bin'

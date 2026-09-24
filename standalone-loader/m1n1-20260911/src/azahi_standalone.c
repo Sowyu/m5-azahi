@@ -133,7 +133,7 @@ int azahi_standalone_run(void)
     ic_ivau_range(kernel, dest_len);
     kboot_set_initrd((void *)initrd, h->initrd_len);
     dc_cvau_range((void *)INITRD_ADDR, h->initrd_len);
-    if (kboot_set_chosen("bootargs", args))
+    if (kboot_set_chosen("bootargs", args) < 0) /* returns the slot index */
         return stop("cannot set bootargs");
     smp_set_wfe_mode(true);
     smp_start_secondaries(); /* J714s build initializes boot index then returns. */

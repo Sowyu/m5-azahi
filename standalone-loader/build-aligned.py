@@ -8,6 +8,7 @@ import hashlib
 import json
 from pathlib import Path
 import runpy
+if not __debug__: raise SystemExit('Refusing python -O: assert statements here are safety checks')
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent

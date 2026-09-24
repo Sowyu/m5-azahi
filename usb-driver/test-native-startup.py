@@ -126,4 +126,20 @@ insmod() {
         self.assertFalse(any('rmmod' in c for c in calls))
 
 
+class Installer(unittest.TestCase):
+    def test_every_root_file_pinned_and_staged(self):
+        import hashlib
+        import importlib.util
+        import sys
+        sys.dont_write_bytecode = True  # keep the source tree clean
+        spec = importlib.util.spec_from_file_location(
+            'installer', Path(__file__).with_name('install-native-startup.py'))
+        installer = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(installer)
+        for name in ('start-native-usb.sh', 'azahi-usb.service'):
+            data = Path(__file__).with_name(name).read_bytes()
+            self.assertEqual(installer.SOURCE_PINS[name], hashlib.sha256(data).hexdigest(), name)
+        self.assertNotIn('/root/usb-candidate', Path(spec.origin).read_text())
+
+
 if __name__ == '__main__': unittest.main()

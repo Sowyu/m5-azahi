@@ -23,6 +23,11 @@ HERE = Path(__file__).resolve().parent
 FORWARD_PORT = 22022  # Fixed in production; isolated tests substitute a free port.
 
 
+def fingerprint(folder):
+    """SHA256 form printed by OpenSSH clients on first connection."""
+    return asyncssh.read_public_key(folder / 'relay_key.pub').get_fingerprint()
+
+
 def initialize(folder, host, root_uuid):
     ipaddress.IPv4Address(host)
     if not re.fullmatch('[0-9a-f-]{36}', root_uuid):
@@ -46,6 +51,7 @@ def initialize(folder, host, root_uuid):
                                         (HERE / 'bootstrap.py').read_text())
     os.chmod(folder / 'bootstrap.py', 0o600)
     print('Created private task keys/config. No listeners started.')
+    print('RELAY_HOST_KEY', fingerprint(folder), '(compare before accepting)')
 
 
 class State:
@@ -53,8 +59,16 @@ class State:
         self.folder = folder
         self.config = json.loads((folder / 'config.json').read_text())
         self.tunnel_key = asyncssh.read_public_key(folder / 'tunnel_key.pub')
-        self.deadline = time.monotonic() + 1200
-        self.failures = 0
+        # Window and failure count live on disk: a relay restart must not
+        # reopen an expired or locked-out bootstrap password.
+        try:
+            with (folder / 'bootstrap-expires').open('x') as out:
+                out.write(repr(time.time() + 1200))
+        except FileExistsError:
+            pass
+        self.deadline = float((folder / 'bootstrap-expires').read_text())
+        failures = folder / 'bootstrap-failures'
+        self.failures = failures.stat().st_size if failures.exists() else 0
         self.used = (folder / 'bootstrap-delivered').exists()
         self.registration = None
         if (folder / 'registration.json').exists():
@@ -81,7 +95,7 @@ class Server(asyncssh.SSHServer):
 
     def password_auth_supported(self):
         return (self.user == 'setup' and not self.state.used and
-                self.state.failures < 5 and time.monotonic() < self.state.deadline)
+                self.state.failures < 5 and time.time() < self.state.deadline)
 
     def kbdint_auth_supported(self):
         return False
@@ -92,6 +106,8 @@ class Server(asyncssh.SSHServer):
         if hmac.compare_digest(password, self.state.config['password']):
             return True
         self.state.failures += 1
+        with (self.state.folder / 'bootstrap-failures').open('ab') as out:
+            out.write(b'x')  # One byte per failure; size is the count.
         return False
 
     def public_key_auth_supported(self):
@@ -107,7 +123,7 @@ class Server(asyncssh.SSHServer):
 
 async def process(state, proc):
     user = proc.get_extra_info('username')
-    if user == 'setup' and proc.command == 'bootstrap' and not state.used and time.monotonic() < state.deadline:
+    if user == 'setup' and proc.command == 'bootstrap' and not state.used and time.time() < state.deadline:
         with (state.folder / 'bootstrap-delivered').open('x'):
             pass
         state.used = True
@@ -153,7 +169,8 @@ async def serve(folder):
                                          server_host_keys=[folder / 'relay_key'],
                                          process_factory=lambda p: process(state, p),
                                          login_timeout=30, encoding='utf-8')
-    print('RELAY_LISTENING; bootstrap expires in 20 minutes; no host shell', flush=True)
+    print('RELAY_HOST_KEY', fingerprint(folder), flush=True)
+    print('RELAY_LISTENING; bootstrap window from first start is persistent; no host shell', flush=True)
     async with server:
         await server.serve_forever()
 

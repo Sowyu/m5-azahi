@@ -90,6 +90,13 @@ ExecStart=/usr/bin/ssh -F none -NT -i {dest}/tunnel_key -o IdentitiesOnly=yes -o
 Restart=on-failure
 RestartSec=15
 UMask=0077
+# Outbound client that only reads its key and pin: no capabilities, read-only
+# filesystem. No NoNewPrivileges/seccomp options: under SELinux they can block
+# the exec domain transition and this unit is the only remote-access path.
+CapabilityBoundingSet=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
 
 [Install]
 WantedBy=multi-user.target

@@ -429,6 +429,7 @@ static int dt_set_memory(void)
          * 8 GB in, clear of any plausible guest image, and still leaves ~56 GB
          * of carveout-free RAM. Kernel (0x10800000000), FDT (0x10900000000) and
          * initrd (0x10A00000000) all sit above it.
+         * NOTE: this tree still starts at 0x1010A960000, not 0x10200000000.
          */
         u64 safe_min = 0x1010a960000UL;
         u64 safe_max = 0x10F4AB00000UL;
@@ -436,8 +437,11 @@ static int dt_set_memory(void)
             printf("FDT: T6050 bring-up: usable memory 0x%lx..0x%lx -> 0x%lx..0x%lx "
                    "(carveout-free)\n",
                    dram_min, dram_max, safe_min, safe_max);
-            dram_min = safe_min;
-            dram_max = safe_max;
+            /* Intersect, never extend: smaller-RAM machines end below safe_max. */
+            if (dram_min < safe_min)
+                dram_min = safe_min;
+            if (dram_max > safe_max)
+                dram_max = safe_max;
         }
     }
 
