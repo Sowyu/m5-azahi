@@ -5,6 +5,48 @@ The driver build scripts expect the exact Fedora Asahi
 host-built `modpost`, Homebrew LLVM/LLD and device-tree tools. These are not
 included. This is not a generic DKMS package or installation guide.
 
+## Compile checks on a Linux host (added 2026-09-25)
+
+The build scripts above only run on the original macOS host. For compile
+checks without it, the exact kernel source and a cross compiler are public:
+
+```sh
+git clone --depth 1 --branch kernel-7.0.13-400.asahi \
+  https://gitlab.com/fedora-asahi/kernel-asahi.git linux-7.0.13-400
+# aarch64 cross GCC 16.1 from kernel.org crosstool (x86_64 host)
+curl -LO https://mirrors.edge.kernel.org/pub/tools/crosstool/files/bin/x86_64/16.1.0/x86_64-gcc-16.1.0-nolibc-aarch64-linux.tar.xz
+tar xf x86_64-gcc-16.1.0-nolibc-aarch64-linux.tar.xz
+export PATH=$PWD/gcc-16.1.0-nolibc/aarch64-linux/bin:$PATH ARCH=arm64 CROSS_COMPILE=aarch64-linux-
+cd linux-7.0.13-400
+cp <repo>/research-archive/kconfig.txt .config   # the target's own config
+scripts/config --disable RUST                    # C modules only; avoids the Rust toolchain
+make olddefconfig && make -j"$(nproc)" modules_prepare
+```
+
+Host tools needed: flex, bison, bc, m4, dtc. Without root, `apt download`
+plus `dpkg -x` into a local prefix works; set `BISON_PKGDATADIR` to the
+extracted `usr/share/bison`.
+
+Then build a module out of tree from a scratch copy:
+
+```sh
+echo 'obj-m += phy-apple-t6050-usb2.o' > Makefile
+make -C <kernel-tree> M=$PWD KBUILD_MODPOST_WARN=1 W=1 modules
+```
+
+This proves the source compiles against the exact target headers and config.
+It does not produce loadable modules: there is no `Module.symvers` (so
+unresolved-symbol warnings are expected), Rust is disabled, the compiler is
+not the target's GCC 16.1.1 Red Hat build, and nothing is signed. Never
+install these objects on the target.
+
+The public macOS 27.0 (26A428) restore image is the same OS the target runs.
+[`ipsw`](https://github.com/blacktop/ipsw) can extract its J714s device tree
+and Mac17,9 kernelcache over HTTP range requests without downloading the
+whole image, for example `ipsw extract --dtree --remote <ipsw-url>` and
+`ipsw extract --kernel --remote --device Mac17,9 <ipsw-url>`. Apple files
+obtained this way stay outside the repository.
+
 ## Tests runnable from the public source
 
 ```sh
