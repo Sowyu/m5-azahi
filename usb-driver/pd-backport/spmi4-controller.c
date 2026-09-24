@@ -25,6 +25,11 @@ struct azahi_spmi4 {
 	struct spmi4_io io;
 };
 
+/* Probe accepts one exact resource, so at most one instance exists. Its poison
+ * survives unbind/rebind and pins the module until reboot, like hpm-once.
+ */
+static bool azahi_spmi4_poisoned;
+
 static u32 azahi_spmi4_read(void *context, u32 offset)
 {
 	struct azahi_spmi4 *s = context;
@@ -53,6 +58,10 @@ static int azahi_spmi4_transfer(struct spmi_controller *ctrl, u8 op, u8 sid,
 		return -EPERM;
 	mutex_lock(&s->lock);
 	ret = spmi4_transfer(&s->io, sid, op, addr, out, out_len, in, in_len);
+	if (s->io.poisoned && !azahi_spmi4_poisoned) {
+		azahi_spmi4_poisoned = true;
+		__module_get(THIS_MODULE);
+	}
 	mutex_unlock(&s->lock);
 	return ret;
 }
@@ -91,12 +100,16 @@ static int azahi_spmi4_probe(struct platform_device *pdev)
 	/* No MMIO or controller registration before explicit future test gates. */
 	if (!allow_probe)
 		return -EPERM;
+	if (azahi_spmi4_poisoned)
+		return -EIO;
 	if (!of_machine_is_compatible("apple,j714s"))
 		return -ENODEV;
 	if (of_property_read_u32(pdev->dev.of_node, "azahi,spmi-generation", &gen) || gen != 4)
 		return -EINVAL;
 	r = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (!r || r->start != 0x28a1a8000ULL || resource_size(r) != 0x4000)
+	/* Apple on-SoC MMIO must be nGnRnE, as hpm-once maps it with ioremap_np. */
+	if (!r || r->start != 0x28a1a8000ULL || resource_size(r) != 0x4000 ||
+	    !(r->flags & IORESOURCE_MEM_NONPOSTED))
 		return -EINVAL;
 	ctrl = devm_spmi_controller_alloc(&pdev->dev, sizeof(*s));
 	if (IS_ERR(ctrl))

@@ -881,11 +881,14 @@ static blk_status_t apple_nvme_queue_rq(struct blk_mq_hw_ctx *hctx,
 			case nvme_admin_identify:
 			case nvme_admin_get_log_page:
 			case nvme_admin_get_features:
+				allowed = true;
+				break;
 			case nvme_admin_create_cq:
 			case nvme_admin_create_sq:
 			case nvme_admin_delete_cq:
 			case nvme_admin_delete_sq:
-				allowed = true;
+				/* Driver-internal queue setup only, never ioctl passthrough. */
+				allowed = !(nvme_req(req)->flags & NVME_REQ_USERCMD);
 				break;
 			case nvme_admin_set_features:
 				/* Never allow the Save bit to persist feature settings. */
@@ -1850,8 +1853,26 @@ static int apple_nvme_suspend(struct device *dev)
 	return ret;
 }
 
-static DEFINE_SIMPLE_DEV_PM_OPS(apple_nvme_pm_ops, apple_nvme_suspend,
-				apple_nvme_resume);
+/*
+ * J714S_RO: suspend stops the ANS CPU and resume would need the power reset
+ * that apple_nvme_reset_work() refuses, so the disk would be removed. Abort
+ * the transition in prepare, before any device is suspended.
+ */
+static int apple_nvme_prepare(struct device *dev)
+{
+	struct apple_nvme *anv = dev_get_drvdata(dev);
+
+	if (anv->hw->j714s_readonly) {
+		dev_err(dev, "J714S_RO cannot restart ANS firmware; refusing system sleep\n");
+		return -EBUSY;
+	}
+	return 0;
+}
+
+static const struct dev_pm_ops apple_nvme_pm_ops = {
+	.prepare = pm_sleep_ptr(apple_nvme_prepare),
+	SYSTEM_SLEEP_PM_OPS(apple_nvme_suspend, apple_nvme_resume)
+};
 
 #ifndef AZAHI_ROOT_WRITES
 static const struct apple_nvme_hw apple_nvme_t8015_hw = {

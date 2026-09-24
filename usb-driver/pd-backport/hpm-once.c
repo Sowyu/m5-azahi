@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0
 /* One-shot native HPM startup candidate. Default: power/FIFO reads only.
- * Does not register SPMI children or modify USB/DWC3/PHY devices.
- * Inspect result/ready in sysfs; a loaded module alone is NOT success.
+ * mode=probe adds bus WAKEUP and selector writes; mode=awake may add SSPS(S0).
+ * No SPMI children or USB/DWC3/PHY changes. Check result/ready, not insmod.
  */
 #include <linux/delay.h>
 #include <linux/io.h>
