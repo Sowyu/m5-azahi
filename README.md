@@ -47,6 +47,7 @@ a daily-use machine. Never use the reference disk geometry on another SSD.**
 Read [PROGRESS.md](PROGRESS.md) and [the handoff](docs/HANDOFF.md) before continuing.
 The 2026-09-25 offline audit, fixes and Wi-Fi PCIe groundwork are summarised in
 [docs/audit-2026-09-25](docs/audit-2026-09-25/README.md). None of it is installed.
+To use the installed system day to day, follow [daily-driver/](daily-driver/README.md).
 Publication is guarded by [default-deny ignores and index/history checks](docs/PUBLICATION-SAFETY.md).
 
 **Current departure state:** KDE is running, but the phone has not exposed a
@@ -59,6 +60,8 @@ working recipe. Live USB-controller reload is unsafe and previously failed.
 
 ## Contents
 
+- `daily-driver/`: runbook and settings script for day-to-day use of the
+  installed system (no sleep, pinned boot packages, USB adapter networking).
 - `input-driver/`: DockChannel interface-power changes and host regression test.
 - `nvme-driver/`: ANS/SART experiments, root-write policy and boundary tests.
 - `usb-driver/`: USB2 PHY, DWC3 glue, guarded overlay, tethering runner,

@@ -71,6 +71,7 @@ With `CC=gcc` on an x86_64 Linux host:
 | standalone-loader/test-shutdown.py (needs dtc tools) | 2 pass |
 | standalone-loader/test-notch.py | pass |
 | pcie-driver/test-pcie-dt.py (with the ADT JSON) | 16 pass |
+| daily-driver/test-apply-safe-config.py | 8 pass |
 
 Every kernel module in the repo builds with zero warnings at `W=1` against
 `kernel-7.0.13-400.asahi` configured from `research-archive/kconfig.txt`
@@ -79,6 +80,12 @@ fragments compile with `-Wall -Wextra -Werror` against upstream m1n1 headers.
 
 Tests that need private fixtures (real ADT dump, v3 to v6 images, m1n1
 Python library, macOS clang) were not run.
+
+## Daily use
+
+[daily-driver/README.md](../../daily-driver/README.md) is the runbook for using
+the installed v7 system day to day with what exists now: settings only, no
+rebuild or new image.
 
 ## Owner actions
 

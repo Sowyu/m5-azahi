@@ -2,6 +2,9 @@
 LICENSES/GPL-2.0.txt
 PROGRESS.md
 README.md
+daily-driver/README.md
+daily-driver/apply-safe-config.sh
+daily-driver/test-apply-safe-config.py
 docs/BUILD-AND-TEST.md
 docs/HANDOFF.md
 docs/audit/README.md

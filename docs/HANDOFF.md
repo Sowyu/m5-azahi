@@ -7,8 +7,10 @@ Offline work only; the hardware state recorded below is unchanged since
 [the audit summary](audit-2026-09-25/README.md). Points that change what to
 do on resumption:
 
-1. On the running system, set `HandleLidSwitch=ignore` (logind) before any
-   lid close. The installed NVMe build can lose its root disk across sleep.
+1. On the running system, block sleep before any lid close: the installed
+   NVMe build can lose its root disk across sleep. The exact commands, plus
+   the other daily-use settings, are in
+   [daily-driver/README.md](../daily-driver/README.md).
 2. Nothing new is installed. Any rebuilt module or loader has new hashes, so
    the install-bundle pins must be regenerated first. The installer now also
    pins `start-native-usb.sh` and `azahi-usb.service`.
