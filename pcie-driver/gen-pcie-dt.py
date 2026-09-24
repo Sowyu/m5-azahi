@@ -1,0 +1,274 @@
+#!/usr/bin/env python3
+"""Generate the J714s apcie0 Wi-Fi PCIe device-tree overlay from the Apple ADT.
+
+Input is the JSON that `ipsw dtree --json` produces from the matching macOS
+restore image (reg values decimal, some props base64). The repo cannot ship
+that ADT, so pass its path as an argument. Output is a .dtso overlay describing:
+
+  - the apcie0 host bridge (compatible azahi,t6050-pcie only, so the built-in
+    stock pcie-apple never binds it),
+  - dart-apcie0 (apple,t8110-dart) for the endpoints,
+  - port 0 only (the Centauri N1 port, /arm-io/apcie0/pci-bridge0),
+  - the three N1 PCI functions 106b:1901 / 1902 / 1903 with iommu-map.
+
+The sd-reader port (pci-bridge1) is deliberately left out (disabled).
+
+Everything numeric comes from the ADT. No register writes, no hardware access.
+This only emits text. Bring-up of the controller happens in the loader
+(standalone-loader/.../azahi_pcie.c); Linux then binds by PCI ID behind the DART.
+
+Usage:
+  gen-pcie-dt.py <j714s-adt.json> [-o out.dtso]
+
+The addresses in the ADT JSON are raw /arm-io child addresses. arm-io maps its
+children into CPU physical space with a +0x200000000 offset, except the ECAM
+window (reg[0]) which the ADT already gives as the final 0x1cb0000000 address.
+"""
+import argparse
+import base64
+import json
+import struct
+import sys
+
+# arm-io child -> CPU physical offset (see /arm-io ranges in the ADT).
+ARM_IO_OFFSET = 0x200000000
+
+
+def load_tree(path):
+    with open(path) as f:
+        return json.load(f)["device-tree"]
+
+
+def children(node):
+    for child in node.get("children", []):
+        for name, value in child.items():
+            yield name, value
+
+
+def get(root, path):
+    node = root
+    for part in path.strip("/").split("/"):
+        if not part:
+            continue
+        for name, value in children(node):
+            if name == part:
+                node = value
+                break
+        else:
+            raise KeyError(path)
+    return node
+
+
+def b64_words(value):
+    raw = base64.b64decode(value)
+    return list(struct.unpack("<%dI" % (len(raw) // 4), raw))
+
+
+def reg_list(node):
+    """Return [(addr, size), ...] from an ADT reg property (list or single)."""
+    reg = node["reg"]
+    if isinstance(reg, dict):
+        reg = [reg]
+    return [(r["addr"], r["size"]) for r in reg]
+
+
+def cpu_addr(child_addr):
+    """Translate an /arm-io child address to a CPU physical address."""
+    if child_addr >= 0x1000000000:  # ECAM and other identity-mapped windows
+        return child_addr
+    return child_addr + ARM_IO_OFFSET
+
+
+def cell64(addr):
+    return "0x%x 0x%08x" % (addr >> 32, addr & 0xFFFFFFFF)
+
+
+# The three N1 functions live on bus 1, device 0, functions 0/1/2.
+# The DART SIDs (1, 2, 3) are what macOS assigns dynamically to control/alpha/
+# beta (confirmed from AppleT8110DART::_dartAssignDynamicSID + the RID2SID
+# writer, build 26A428); SID 0 is never used for a valid RID2SID entry. Any
+# SIDs 1..15 work as long as the DART and the RID2SID table agree.
+#   iommu-map RID  = (bus << 8) | (dev << 3) | fn = 0x100 | fn
+#   child reg[0]   = (bus << 16) | (dev << 11) | (fn << 8) = 0x10000 | (fn << 8)
+N1_FUNCTIONS = [
+    # adt child name,        node label,   pci id,   function, dart sid
+    ("centauri-control", "wifi_ctrl", 0x1901, 0, 1),
+    ("centauri-alpha",   "wifi_wlan", 0x1902, 1, 2),
+    ("centauri-beta",    "wifi_bt",   0x1903, 2, 3),
+]
+
+
+def build(root):
+    model = root.get("model")
+    if model != "Mac17,9":
+        print("warning: ADT model is %r, expected Mac17,9" % model, file=sys.stderr)
+
+    apcie = get(root, "/arm-io/apcie0")
+    bridge0 = get(root, "/arm-io/apcie0/pci-bridge0")
+    dart = get(root, "/arm-io/dart-apcie0")
+
+    if "apcie,t6050" not in _compat(apcie):
+        raise SystemExit("apcie0 compatible is %r, not apcie,t6050" % _compat(apcie))
+    for adt_name, *_ in N1_FUNCTIONS:
+        get(root, "/arm-io/apcie0/pci-bridge0/" + adt_name)  # presence check
+
+    regs = reg_list(apcie)
+    ecam_addr, ecam_size = regs[0]
+    rc_addr, rc_size = regs[1]
+    # 16 shared reg entries, then 6 per port. Port 0 core is index 16, phy 18.
+    port0_addr, port0_size = regs[16]
+    phy0_addr, phy0_size = regs[18]
+
+    port_irq = apcie["interrupts"][0]                 # 1523 on this board
+    dart_irq = dart["interrupts"][0]                  # 1524
+    msi_base = apcie["msi-vector-offset"]             # AIC IRQ base for MSIs
+    msi_count = bridge0["#msi-vectors"]               # 32 per port
+
+    dart_addr, dart_size = reg_list(dart)[0]
+    if dart_size > 0x4000:
+        dart_size = 0x4000  # apple-dart maps one register page; ADT block is larger
+
+    ranges = _ranges(apcie)
+    bus_lo, bus_hi = _bus_range(apcie)
+
+    perst = _perst_gpio(bridge0)
+    ep_names = {0x1901: "control", 0x1902: "wlan", 0x1903: "bt"}
+
+    out = []
+    w = out.append
+    w("// SPDX-License-Identifier: GPL-2.0")
+    w("/*")
+    w(" * J714s Apple N1 (Centauri) Wi-Fi PCIe overlay, port 0 only.")
+    w(" *")
+    w(" * GENERATED by pcie-driver/gen-pcie-dt.py from the macOS restore-image ADT.")
+    w(" * Do not edit by hand; regenerate from the ADT and re-run test-pcie-dt.py.")
+    w(" *")
+    w(" * Merge onto a base DTB with fdtoverlay at build time, then boot. Base")
+    w(" * references (aic, pinctrl_ap) use labels, so build the base with dtc -@.")
+    w(" * The apcie0 controller must already be brought up by the loader")
+    w(" * (standalone-loader/.../azahi_pcie.c) and its GP power domains left on;")
+    w(" * this overlay only describes the hardware so pcie-apple can train port 0")
+    w(" * and a PCI driver can bind 106b:1901/1902/1903. No power-domains here: the")
+    w(" * loader prepares power, exactly like the USB overlay (pd_ignore_unused).")
+    w(" *")
+    w(" * The sd-reader port (pci-bridge1) is intentionally omitted.")
+    w(" */")
+    w("/dts-v1/;")
+    w("/plugin/;")
+    w("")
+    w("&{/soc} {")
+    w("\tpcie_dart0: iommu@%x {" % (cpu_addr(dart_addr) & 0xFFFFFFFFFF))
+    w('\t\tcompatible = "apple,t6050-dart", "apple,t8110-dart";')
+    w('\t\tstatus = "disabled";  /* azahi_pcie.c enables after bring-up */')
+    w("\t\treg = <%s 0x0 0x%x>;" % (cell64(cpu_addr(dart_addr)), dart_size))
+    w("\t\tinterrupt-parent = <&aic>;")
+    w("\t\tinterrupts = <0 %d 4>;" % dart_irq)
+    w("\t\t#iommu-cells = <1>;")
+    w("\t};")
+    w("")
+    w("\tpcie0: pcie@%x {" % (cpu_addr(ecam_addr) & 0xFFFFFFFFFF))
+    w('\t\tcompatible = "azahi,t6050-pcie";')
+    w('\t\tstatus = "disabled";  /* azahi_pcie.c enables after bring-up */')
+    w('\t\tdevice_type = "pci";')
+    w("\t\treg = <%s 0x0 0x%x>," % (cell64(cpu_addr(ecam_addr)), ecam_size))
+    w("\t\t      <%s 0x0 0x%x>," % (cell64(cpu_addr(rc_addr)), rc_size))
+    w("\t\t      <%s 0x0 0x%x>," % (cell64(cpu_addr(port0_addr)), port0_size))
+    w("\t\t      <%s 0x0 0x%x>;" % (cell64(cpu_addr(phy0_addr)), phy0_size))
+    w('\t\treg-names = "config", "rc", "port0", "phy0";')
+    w("\t\tinterrupt-parent = <&aic>;")
+    w("\t\tinterrupts = <0 %d 4>;" % port_irq)
+    w("\t\tmsi-controller;")
+    w("\t\tmsi-parent = <&pcie0>;")
+    w("\t\tmsi-ranges = <&aic 0 %d 1 %d>;" % (msi_base, msi_count))
+    def rid(fn):
+        return 0x100 | fn  # bus 1, dev 0, function fn
+    w("\t\tiommu-map = <0x%x &pcie_dart0 %d 1>,"
+      % (rid(N1_FUNCTIONS[0][3]), N1_FUNCTIONS[0][4]))
+    w("\t\t\t    <0x%x &pcie_dart0 %d 1>,"
+      % (rid(N1_FUNCTIONS[1][3]), N1_FUNCTIONS[1][4]))
+    w("\t\t\t    <0x%x &pcie_dart0 %d 1>;"
+      % (rid(N1_FUNCTIONS[2][3]), N1_FUNCTIONS[2][4]))
+    w("\t\tiommu-map-mask = <0xffff>;")
+    w("\t\tbus-range = <0x%x 0x%x>;" % (bus_lo, bus_hi))
+    w("\t\t#address-cells = <3>;")
+    w("\t\t#size-cells = <2>;")
+    w("\t\tranges = %s;" % ranges)
+    w("\t\tdma-coherent;")
+    w("")
+    w("\t\tpcie0_port0: pci@0,0 {")
+    w('\t\t\tdevice_type = "pci";')
+    w("\t\t\treg = <0x0 0x0 0x0 0x0 0x0>;")
+    w("\t\t\t/* function-perst GPIO %d on pinctrl_ap (gpio0/AP), active low */"
+      % perst)
+    w("\t\t\treset-gpios = <&pinctrl_ap %d 1>;" % perst)
+    w("\t\t\t#address-cells = <3>;")
+    w("\t\t\t#size-cells = <2>;")
+    w("\t\t\tranges;")
+    w("\t\t\tinterrupt-controller;")
+    w("\t\t\t#interrupt-cells = <1>;")
+    w("\t\t\tinterrupt-map-mask = <0 0 0 7>;")
+    w("\t\t\tinterrupt-map = <0 0 0 1 &pcie0_port0 0 0 0 0>,")
+    w("\t\t\t\t\t<0 0 0 2 &pcie0_port0 0 0 0 1>,")
+    w("\t\t\t\t\t<0 0 0 3 &pcie0_port0 0 0 0 2>,")
+    w("\t\t\t\t\t<0 0 0 4 &pcie0_port0 0 0 0 3>;")
+    w("\t\t\tbus-range = <0x1 0x1>;")
+    for adt_name, label, pci_id, fn, _sid in N1_FUNCTIONS:
+        w("")
+        w("\t\t\t%s: %s@0,%d {" % (label, ep_names[pci_id], fn))
+        w('\t\t\t\tcompatible = "pci106b,%x";' % pci_id)
+        w("\t\t\t\treg = <0x%x 0x0 0x0 0x0 0x0>;" % ((1 << 16) | (fn << 8)))
+        w("\t\t\t};")
+    w("\t\t};")
+    w("\t};")
+    w("};")
+    return "\n".join(out) + "\n"
+
+
+def _compat(node):
+    compat = node.get("compatible")
+    return compat if isinstance(compat, list) else [compat]
+
+
+def _perst_gpio(bridge0):
+    perst = bridge0["function-perst"]
+    return perst["args"][0]  # GPIO line number (80 on this board)
+
+
+def _bus_range(apcie):
+    value = apcie["bus-range"]
+    return value & 0xFFFFFFFF, (value >> 32) & 0xFFFFFFFF
+
+
+def _ranges(apcie):
+    """Rebuild the PCI ranges (3 child + 2 parent + 2 size cells) from the ADT."""
+    words = b64_words(apcie["ranges"])
+    entries = []
+    for i in range(0, len(words), 7):
+        chunk = words[i:i + 7]
+        if len(chunk) < 7:
+            break
+        flags = chunk[0]
+        child = chunk[2] << 32 | chunk[1]
+        cpu = chunk[4] << 32 | chunk[3]
+        size = chunk[6] << 32 | chunk[5]
+        entries.append("<0x%08x %s %s %s>"
+                       % (flags, cell64(child), cell64(cpu), cell64(size)))
+    return ",\n\t\t\t\t\t ".join(entries)
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("adt_json", help="path to j714s ADT JSON (ipsw dtree --json)")
+    ap.add_argument("-o", "--output", help="output .dtso path (default: stdout)")
+    args = ap.parse_args()
+
+    text = build(load_tree(args.adt_json))
+    if args.output:
+        with open(args.output, "w") as f:
+            f.write(text)
+    else:
+        sys.stdout.write(text)
+
+
+if __name__ == "__main__":
+    main()

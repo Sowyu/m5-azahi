@@ -5,6 +5,7 @@
 #include "kboot.h"
 #include "adt.h"
 #include "assert.h"
+#include "azahi_pcie.h"
 #include "clk.h"
 #include "dapf.h"
 #include "devicetree.h"
@@ -3000,6 +3001,18 @@ int kboot_boot(void *kernel)
      */
     if (chip_id == T6050 || chip_id == T6051) {
         printf("kboot: T6050 bring-up: skipping pcie_init()/dapf_init_all()\n");
+        /*
+         * Stock pcie_init()/dapf_init_all() still SError on this SoC and stay
+         * skipped above. azahi_pcie_init() is a no-op unless the kernel cmdline
+         * opts in (azahi.pcie=probe|bringup); see azahi_pcie.c. Default boots
+         * are unchanged. The overlay's PCIe/DART nodes stay disabled unless
+         * the bring-up completes.
+         */
+        const char *pcie_cmdline = NULL;
+        for (int i = 0; i < MAX_CHOSEN_PARAMS && chosen_params[i][0]; i++)
+            if (!strcmp(chosen_params[i][0], "bootargs"))
+                pcie_cmdline = chosen_params[i][1];
+        azahi_pcie_init(pcie_cmdline, dt);
     } else {
         pcie_init();
         dapf_init_all();
