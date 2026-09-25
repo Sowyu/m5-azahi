@@ -299,3 +299,39 @@ decides most of this in one boot, which is why it comes first.
   `1 << (4 * cluster + core)` formula only matches that for cluster 0, so on
   these 6-core clusters it would name the wrong CPU for cores 6 to 17 even
   if hypothesis 1 is fixed. CPU1, the core actually tried, maps correctly.
+
+## Follow-up: macOS core-start sequence compared (2026-09-25)
+
+Traced in the Mac17,9 kernelcache (26A428): `IOPMGR::enableCPUCore(cpu,
+entry)` (0xfffffe000c2d50dc) drops the entry argument and calls
+`ApplePMGR::enableCPUCore(cpu)` (0xfffffe000985bf4c), which calls
+`enableCPUCores(1 << cpu, true)` (0xfffffe000985bafc). That reaches
+`ApplePMGR::configMiscCores` (0xfffffe000985b3d4) through vtable slot
+`+0xd20`, which `AppleT6050PMGR` does not override.
+
+`configMiscCores` builds, from the requested cores only, one value for
+CPU_START `+0x4` per die and one value per cluster for `+0x8 + 4*n`, then
+writes them in that order. It writes `+0x4` even for a die with no requested
+cores (value 0), so `+0x4` behaves as a trigger register, not a plain enable
+mask.
+
+Consequences:
+
+- **Hypothesis 1 is unlikely.** For CPU1, macOS writes the same values the
+  stock loader writes (`0x2` to `+0x4`, then the cluster-0 bit to `+0x8`).
+  The recorded `0x3fffe -> 0x3fffc` readback fits the hardware accepting the
+  start request, which also fits CPU1's power domain reaching ACTIVE. The
+  failure happens after a start request that looks correct. Skipping or
+  OR-ing the `+0x4` write is not expected to help and is withdrawn as the
+  candidate fix.
+- **Real but secondary bug.** macOS takes each core's `+0x4` bit from
+  per-core data, and iBoot's `0x3fffe` is one bit per CPU in linear order.
+  The loader's `1 << (4 * cluster + core)` only matches that for cluster 0,
+  so cores 6 to 17 would get the wrong bit (earlier notes recorded the same
+  mask problem). Once a core can start at all, use the linear CPU index
+  (`6 * cluster + core` on this 6-core-cluster layout) for `+0x4`.
+- The remaining explanation is outside the PMGR start sequence, in how a
+  released core reaches its first instruction. This session does not
+  investigate that further. The read-only probe (step 1 above) is still the
+  right first hardware step: it records the reset-vector state per core
+  without starting anything.
