@@ -14,15 +14,19 @@ Initialize outside this source directory with restrictive permissions.
 
 The helper relay uses pinned `requirements.txt` in a dedicated environment.
 `serve` listens on the selected helper address, port 8022. The virtual setup
-account accepts only the bootstrap command, expires after 20 minutes, and is
-disabled after delivery (including after relay restart). There are at most
-five failed password attempts per relay process. It has no host shell.
+account accepts only the bootstrap command, expires 20 minutes after the
+first `serve` start, and is disabled after delivery. At most five failed
+password attempts are allowed. The window, the failure count and delivery are
+recorded in the private directory, so a relay restart resets none of them.
+It has no host shell.
 
-The user must independently compare the relay's SSH fingerprint before
-accepting it. The setup artifact and task-scoped tunnel private key travel
-only over that authenticated encrypted SSH connection. The controller private
-key stays on the helper. No passwords/private keys belong in documentation,
-shell history, screenshots or publication. Never use disabled host checking.
+`init` and `serve` print the relay host-key SHA256 fingerprint
+(`RELAY_HOST_KEY`). The user must compare it with the fingerprint the SSH
+client shows before accepting it. The setup artifact and task-scoped tunnel
+private key travel only over that authenticated encrypted SSH connection.
+The controller private key stays on the helper. No passwords/private keys
+belong in documentation, shell history, screenshots or publication. Never use
+disabled host checking.
 
 The Linux setup body refuses the wrong kernel, model or root UUID. It creates
 only unique `/run` state and two transient systemd services. A dedicated native
@@ -35,10 +39,11 @@ run commands on the helper or create arbitrary forwards. The helper then
 uses the controller key and registered native host pin to connect through it.
 
 The source is an initial prototype, not a general-purpose audited access
-product. Four real loopback integration tests cover incorrect credentials,
+product. Six real loopback tests cover incorrect credentials,
 host-key mismatch, one-use bootstrap, command/local-forwarding refusal,
-registration pinning, loopback-only remote forwarding and actual data through
-that forward. Run `python test-relay.py` inside the dedicated environment.
+registration pinning, loopback-only remote forwarding, actual data through
+that forward, expiry/lockout surviving a restart and fingerprint output.
+Run `python test-relay.py` inside the dedicated environment.
 No target is accessed by these tests. The tests use an isolated ephemeral
 forwarding port, so they can run while the production relay is occupied.
 Native key-authenticated access and a live switch to the persisted services

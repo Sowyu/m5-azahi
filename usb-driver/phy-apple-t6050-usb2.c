@@ -66,6 +66,19 @@
 #define TUNABLE_MAX_ENTRIES		16
 #define BANK_SIZE			0x4000
 
+/*
+ * dwc3_core_init() calls phy_init(), then the DWC3 core soft reset, then
+ * phy_power_on(). The soft reset only completes while this PHY supplies its
+ * UTMI clock. The loader leaves the PHY running, so the first probe works;
+ * power_off gates the clocks, so a later DWC3 probe (unbind/bind, module
+ * reload, deferred re-probe) times out with -ETIMEDOUT. Default off: the
+ * normal first-probe register sequence is unchanged either way.
+ */
+static bool reinit_after_shutdown;
+module_param(reinit_after_shutdown, bool, 0644);
+MODULE_PARM_DESC(reinit_after_shutdown,
+		 "Experimental, default off: if phy_init finds the PHY shut down, run the host sequence before the DWC3 core soft reset");
+
 struct t6050_tunable {
 	u32 offset;
 	u32 mask;
@@ -251,6 +264,39 @@ static int t6050_usb2_power_off(struct phy *phy)
 	return 0;
 }
 
+/* The state t6050_usb2_shutdown_seq() leaves behind: reset asserted, isolation mode. */
+static bool t6050_usb2_is_shut_down(struct t6050_usb2_phy *tphy)
+{
+	return (readl(tphy->usb2 + USB2PHY_CTL) & USB2PHY_CTL_RESET) &&
+	       FIELD_GET(USB2PHY_USBCTL_MODE, readl(tphy->usb2 + USB2PHY_USBCTL)) ==
+			USB2PHY_USBCTL_MODE_ISOLATION;
+}
+
+/* See reinit_after_shutdown. Only reads registers unless that parameter is set. */
+static int t6050_usb2_init(struct phy *phy)
+{
+	struct t6050_usb2_phy *tphy = phy_get_drvdata(phy);
+
+	guard(mutex)(&tphy->lock);
+	if (tphy->powered || tphy->mode != PHY_MODE_USB_HOST || !t6050_usb2_is_shut_down(tphy))
+		return 0;
+	if (!READ_ONCE(reinit_after_shutdown)) {
+		dev_warn(tphy->dev, "PHY is shut down before the DWC3 core soft reset; expect -ETIMEDOUT (reinit_after_shutdown=0)\n");
+		return 0;
+	}
+	dev_info(tphy->dev, "reinit_after_shutdown: running host sequence before the DWC3 core soft reset\n");
+	t6050_usb2_init_seq(tphy);
+	tphy->powered = true;
+	t6050_usb2_dump(tphy, "after init");
+	return 0;
+}
+
+/* dwc3 calls power_off before exit; this only acts if init powered the PHY and power_on never ran. */
+static int t6050_usb2_exit(struct phy *phy)
+{
+	return t6050_usb2_power_off(phy);
+}
+
 /* AppleT6050TypeCPhy::usb2PhyPortReset(iface, true) then (iface, false) */
 static int t6050_usb2_reset(struct phy *phy)
 {
@@ -268,6 +314,8 @@ static int t6050_usb2_reset(struct phy *phy)
 
 static const struct phy_ops t6050_usb2_phy_ops = {
 	.owner = THIS_MODULE,
+	.init = t6050_usb2_init,
+	.exit = t6050_usb2_exit,
 	.set_mode = t6050_usb2_set_mode,
 	.power_on = t6050_usb2_power_on,
 	.power_off = t6050_usb2_power_off,

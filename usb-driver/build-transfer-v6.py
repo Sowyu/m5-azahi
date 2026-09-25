@@ -8,6 +8,7 @@ import runpy
 import stat
 import subprocess
 import zlib
+if not __debug__: raise SystemExit('Refusing python -O: assert statements here are safety checks')
 
 HERE = Path(__file__).resolve().parent
 F = runpy.run_path(str(HERE / 'build-transfer-fixed.py'))

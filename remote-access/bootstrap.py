@@ -93,7 +93,9 @@ LogLevel VERBOSE
     run('systemctl', 'is-active', daemon)
     try:
         run('systemd-run', '--unit=' + tunnel, '--property=Restart=on-failure',
-            '--property=RestartSec=5', *ssh, '-NT',
+            '--property=RestartSec=5', '--property=CapabilityBoundingSet=',
+            '--property=ProtectSystem=strict', '--property=ProtectHome=yes',
+            '--property=PrivateTmp=yes', *ssh, '-NT',
             '-R', '127.0.0.1:22022:127.0.0.1:2222', 'tunnel@' + config['host'])
         run('systemctl', 'is-active', tunnel)
     except BaseException:

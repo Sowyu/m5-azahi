@@ -5,6 +5,7 @@
 #include "kboot.h"
 #include "adt.h"
 #include "assert.h"
+#include "azahi_pcie.h"
 #include "clk.h"
 #include "dapf.h"
 #include "devicetree.h"
@@ -429,6 +430,7 @@ static int dt_set_memory(void)
          * 8 GB in, clear of any plausible guest image, and still leaves ~56 GB
          * of carveout-free RAM. Kernel (0x10800000000), FDT (0x10900000000) and
          * initrd (0x10A00000000) all sit above it.
+         * NOTE: this tree still starts at 0x1010A960000, not 0x10200000000.
          */
         u64 safe_min = 0x1010a960000UL;
         u64 safe_max = 0x10F4AB00000UL;
@@ -436,8 +438,11 @@ static int dt_set_memory(void)
             printf("FDT: T6050 bring-up: usable memory 0x%lx..0x%lx -> 0x%lx..0x%lx "
                    "(carveout-free)\n",
                    dram_min, dram_max, safe_min, safe_max);
-            dram_min = safe_min;
-            dram_max = safe_max;
+            /* Intersect, never extend: smaller-RAM machines end below safe_max. */
+            if (dram_min < safe_min)
+                dram_min = safe_min;
+            if (dram_max > safe_max)
+                dram_max = safe_max;
         }
     }
 
@@ -2996,6 +3001,18 @@ int kboot_boot(void *kernel)
      */
     if (chip_id == T6050 || chip_id == T6051) {
         printf("kboot: T6050 bring-up: skipping pcie_init()/dapf_init_all()\n");
+        /*
+         * Stock pcie_init()/dapf_init_all() still SError on this SoC and stay
+         * skipped above. azahi_pcie_init() is a no-op unless the kernel cmdline
+         * opts in (azahi.pcie=probe|bringup); see azahi_pcie.c. Default boots
+         * are unchanged. The overlay's PCIe/DART nodes stay disabled unless
+         * the bring-up completes.
+         */
+        const char *pcie_cmdline = NULL;
+        for (int i = 0; i < MAX_CHOSEN_PARAMS && chosen_params[i][0]; i++)
+            if (!strcmp(chosen_params[i][0], "bootargs"))
+                pcie_cmdline = chosen_params[i][1];
+        azahi_pcie_init(pcie_cmdline, dt);
     } else {
         pcie_init();
         dapf_init_all();

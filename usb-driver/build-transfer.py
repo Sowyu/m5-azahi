@@ -12,6 +12,7 @@ import stat
 import struct
 import subprocess
 import zlib
+if not __debug__: raise SystemExit('Refusing python -O: assert statements here are safety checks')
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent

@@ -8,6 +8,7 @@ the overlay-internal phandle references (iommus, phys, power-domains).
 """
 import re
 import sys
+if not __debug__: raise SystemExit('Refusing python -O: assert statements here are safety checks')
 
 text = sys.stdin.read()
 out, n = re.subn(r"\n\t__symbols__ \{\n.*?\n\t\};\n", "\n", text, flags=re.S)

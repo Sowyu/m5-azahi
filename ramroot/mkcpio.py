@@ -19,6 +19,7 @@ newc limits honoured: per-file size < 4 GiB (asserted); 'split' exists for
 bigger sources.  Usage:  mkcpio.py manifest.txt output.cpio
 """
 import sys, os, stat
+if not __debug__: raise SystemExit('Refusing python -O: assert statements here are safety checks')
 
 ALIGN = 4
 

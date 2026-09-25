@@ -20,10 +20,20 @@
 #include <linux/of.h>
 #include "build/linux-7.0.13/drivers/hid/hid-ids.h"
 /* Fedora's downstream hid-ids.h addition; same Apple vendor ID. */
+#ifndef HOST_VENDOR_ID_APPLE
 #define HOST_VENDOR_ID_APPLE USB_VENDOR_ID_APPLE
+#endif
 
 #define COMMAND_TIMEOUT_MS 1000
 #define START_TIMEOUT_MS 2000
+
+/*
+ * Local J714s experiment, default off (from PR 2). After a start timeout, let
+ * the next open repeat the start: firmware upload plus power OFF/ON, once.
+ */
+static bool start_retry;
+module_param(start_retry, bool, 0644);
+MODULE_PARM_DESC(start_retry, "Allow one repeated interface start after a start timeout (default off)");
 
 #define MAX_INTERFACES 16
 
@@ -158,6 +168,7 @@ struct dchid_iface {
 	uint8_t tx_seq;
 	bool deferred;
 	bool starting;
+	bool start_retried;
 	bool open;
 	struct completion ready;
 
@@ -169,6 +180,8 @@ struct dchid_iface {
 	int gpio_id;
 
 	struct mutex out_mutex;
+	/* Taken by the ACK path and by dchid_cmd() around the fields below. */
+	spinlock_t resp_lock;
 	u32 out_flags;
 	int out_report;
 	u32 retcode;
@@ -228,11 +241,14 @@ dchid_get_interface(struct dockchannel_hid *dchid, int index, const char *name)
 
 	iface->index = index;
 	iface->name = devm_kstrdup(dchid->dev, name, GFP_KERNEL);
+	if (!iface->name)
+		return NULL;
 	iface->dchid = dchid;
 	iface->out_report= -1;
 	init_completion(&iface->out_complete);
 	init_completion(&iface->ready);
 	mutex_init(&iface->out_mutex);
+	spin_lock_init(&iface->resp_lock);
 	iface->wq = alloc_ordered_workqueue("dchid-%s", WQ_MEM_RECLAIM, iface->name);
 	if (!iface->wq)
 		return NULL;
@@ -246,6 +262,7 @@ dchid_get_interface(struct dockchannel_hid *dchid, int index, const char *name)
 	iface->of_node = of_get_child_by_name(dchid->dev->of_node, name);
 	if (!iface->of_node) {
 		dev_warn(dchid->dev, "No OF node for subdevice %s, ignoring.", name);
+		destroy_workqueue(iface->wq);
 		return NULL;
 	}
 
@@ -277,6 +294,10 @@ static int dchid_send(struct dchid_iface *iface, u32 flags, void *msg, size_t si
 		struct dchid_hdr hdr;
 		struct dchid_subhdr sub;
 	} __packed h;
+
+	/* hdr.length is 16 bits; a GPIO ACK echoes a device-sized event. */
+	if (round_up(size, 4) + sizeof(h.sub) > U16_MAX)
+		return -EINVAL;
 
 	memset(&h, 0, sizeof(h));
 	h.hdr.hdr_len = sizeof(h.hdr);
@@ -323,11 +344,13 @@ static int dchid_cmd(struct dchid_iface *iface, u32 type, u32 req,
 	mutex_lock(&iface->out_mutex);
 
 	WARN_ON(iface->out_report != -1);
+	spin_lock(&iface->resp_lock);
 	iface->out_report = report_id;
 	iface->out_flags = FIELD_PREP(FLAGS_GROUP, type) | FIELD_PREP(FLAGS_REQ, req);
 	iface->resp_buf = resp_buf;
 	iface->resp_size = resp_size;
 	reinit_completion(&iface->out_complete);
+	spin_unlock(&iface->resp_lock);
 
 	ret = dchid_send(iface, iface->out_flags, data, size);
 	if (ret < 0)
@@ -349,11 +372,14 @@ static int dchid_cmd(struct dchid_iface *iface, u32 type, u32 req,
 	}
 
 done:
+	/* Waits for an ACK already copying into resp_buf after a timeout. */
+	spin_lock(&iface->resp_lock);
 	iface->tx_seq++;
 	iface->out_report = -1;
 	iface->out_flags = 0;
 	iface->resp_buf = NULL;
 	iface->resp_size = 0;
+	spin_unlock(&iface->resp_lock);
 	mutex_unlock(&iface->out_mutex);
 	return ret;
 }
@@ -447,7 +473,8 @@ static int dchid_get_firmware(struct dchid_iface *iface, void **firmware, size_t
 
 	hdr = (struct fw_header *)fw->data;
 
-	if (hdr->magic != FW_MAGIC || hdr->version != FW_VER ||
+	if (fw->size < sizeof(*hdr) ||
+		hdr->magic != FW_MAGIC || hdr->version != FW_VER ||
 		hdr->hdr_length < sizeof(*hdr) || hdr->hdr_length > fw->size ||
 		(hdr->hdr_length + (size_t)hdr->data_length) > fw->size ||
 		hdr->iface_offset >= hdr->data_length) {
@@ -490,11 +517,13 @@ static int dchid_request_gpio(struct dchid_iface *iface)
 	iface->gpio = devm_gpiod_get_index(iface->dchid->dev, prop_name, 0, GPIOD_OUT_LOW);
 
 	if (IS_ERR_OR_NULL(iface->gpio)) {
-		dev_err(iface->dchid->dev, "Failed to request GPIO %s-gpios\n", prop_name);
+		dev_err(iface->dchid->dev, "Failed to request GPIO %s-gpios: %ld\n",
+			prop_name, PTR_ERR(iface->gpio));
 		iface->gpio = NULL;
 		return -1;
 	}
 
+	dev_info(iface->dchid->dev, "Acquired GPIO %s-gpios\n", prop_name);
 	return 0;
 }
 
@@ -588,6 +617,18 @@ static int dchid_open(struct hid_device *hdev)
 
 		if (!wait_for_completion_timeout(&iface->ready, msecs_to_jiffies(START_TIMEOUT_MS))) {
 			dev_err(iface->dchid->dev, "iface %s start timed out\n", iface->name);
+			/*
+			 * ->starting stays latched after a start that sent every
+			 * command but never got ready, so later opens only return
+			 * -EINPROGRESS. start_retry allows exactly one more start.
+			 */
+			if (start_retry && !iface->start_retried) {
+				iface->start_retried = true;
+				iface->starting = false;
+				dev_warn(iface->dchid->dev,
+					 "AZAHI_START_RETRY iface %s: next open repeats start\n",
+					 iface->name);
+			}
 			return -ETIMEDOUT;
 		}
 	}
@@ -779,7 +820,7 @@ static void dchid_handle_ready(struct dockchannel_hid *dchid, void *data, size_t
 	if (!strcmp(iface->name, "stm")) {
 		ret = dchid_get_report_cmd(iface, STM_REPORT_ID, &dchid->device_id,
 					   sizeof(dchid->device_id));
-		if (ret < sizeof(dchid->device_id)) {
+		if (ret < (int)sizeof(dchid->device_id)) {
 			dev_warn(iface->dchid->dev, "Failed to get device ID from STM!\n");
 			/* Fake it and keep going. Things might still work... */
 			memset(&dchid->device_id, 0, sizeof(dchid->device_id));
@@ -806,11 +847,14 @@ static void dchid_handle_init(struct dockchannel_hid *dchid, void *data, size_t 
 	struct dchid_init_hdr *hdr = data;
 	struct dchid_iface *iface;
 	struct dchid_init_block_hdr *blk;
+	char name[sizeof(hdr->name) + 1] = {};
 
 	if (length < sizeof(*hdr))
 		return;
 
-	iface = dchid_get_interface(dchid, hdr->iface, hdr->name);
+	/* The device need not NUL-terminate the 16-byte name. */
+	memcpy(name, hdr->name, sizeof(hdr->name));
+	iface = dchid_get_interface(dchid, hdr->iface, name);
 	if (!iface)
 		return;
 
@@ -853,7 +897,7 @@ static void dchid_handle_init(struct dockchannel_hid *dchid, void *data, size_t 
 		case INIT_PRODUCT_NAME: {
 			char *product = data;
 
-			if (product[blk->length - 1] != 0) {
+			if (!blk->length || product[blk->length - 1] != 0) {
 				dev_warn(dchid->dev, "Unterminated product name for %s\n",
 					 iface->name);
 			} else {
@@ -897,6 +941,9 @@ static void dchid_handle_gpio(struct dockchannel_hid *dchid, void *data, size_t 
 	if (length < sizeof(*cmd))
 		return;
 
+	dev_info(dchid->dev, "GPIO event: iface=%d gpio=%d cmd=%d\n",
+		 cmd->iface, cmd->gpio, cmd->cmd);
+
 	if (cmd->iface >= MAX_INTERFACES || !(iface = dchid->ifaces[cmd->iface])) {
 		dev_err(dchid->dev, "Got GPIO command for bad inteface %d\n", cmd->iface);
 		goto err;
@@ -936,6 +983,8 @@ err:
 	ack->retcode = retcode;
 	memcpy(ack->cmd, data, length);
 
+	dev_info(dchid->dev, "GPIO ack: retcode 0x%x\n", retcode);
+
 	if (dchid_comm_cmd(dchid, ack, sizeof(*ack) + length) < 0)
 		dev_err(dchid->dev, "Failed to ACK GPIO command\n");
 
@@ -945,6 +994,10 @@ err:
 static void dchid_handle_event(struct dockchannel_hid *dchid, void *data, size_t length)
 {
 	u8 *p = data;
+
+	if (!length)
+		return;
+
 	switch (*p) {
 	case EVENT_INIT:
 		dchid_handle_init(dchid, data, length);
@@ -984,6 +1037,7 @@ static void dchid_packet_work(struct work_struct *ws)
 	if (shdr->length + sizeof(*shdr) > work->hdr.length) {
 		dev_err(dchid->dev, "Bad sub header length (%hu > %zu)\n",
 			shdr->length, work->hdr.length - sizeof(*shdr));
+		kfree(work);
 		return;
 	}
 
@@ -1012,35 +1066,45 @@ static void dchid_handle_ack(struct dchid_iface *iface, struct dchid_hdr *hdr, v
 			shdr->length, hdr->length - sizeof(*shdr));
 		return;
 	}
+
+	/* Not out_mutex: dchid_cmd() holds it while waiting for this ACK. */
+	spin_lock(&iface->resp_lock);
 	if (shdr->flags != iface->out_flags) {
 		dev_err(iface->dchid->dev,
 			"Received unexpected flags 0x%x on ACK channel (expFected 0x%x)\n",
 			shdr->flags, iface->out_flags);
-		return;
+		goto unlock;
 	}
 
 	if (shdr->length < 1) {
 		dev_err(iface->dchid->dev, "Received length 0 output report ack\n");
-		return;
+		goto unlock;
 	}
 	if (iface->tx_seq != hdr->seq) {
 		dev_err(iface->dchid->dev, "Received ACK with bad seq (expected %d, got %d)\n",
 			iface->tx_seq, hdr->seq);
-		return;
+		goto unlock;
 	}
 	if (iface->out_report != payload[0]) {
 		dev_err(iface->dchid->dev, "Received ACK with bad report (expected %d, got %d\n",
 			iface->out_report, payload[0]);
-		return;
+		goto unlock;
 	}
 
-	if (iface->resp_buf && iface->resp_size)
-		memcpy(iface->resp_buf, payload + 1, min((size_t)shdr->length - 1, iface->resp_size));
+	if (iface->resp_buf) {
+		size_t copied = min((size_t)shdr->length - 1, iface->resp_size);
 
-	iface->resp_size = shdr->length;
+		memcpy(iface->resp_buf, payload + 1, copied);
+		/* Report number plus the bytes stored, not the device's length. */
+		iface->resp_size = copied + 1;
+	} else {
+		iface->resp_size = shdr->length;
+	}
 	iface->out_report = -1;
 	iface->retcode = shdr->retcode;
 	complete(&iface->out_complete);
+unlock:
+	spin_unlock(&iface->resp_lock);
 }
 
 static void dchid_handle_packet(void *cookie, size_t avail)
@@ -1075,6 +1139,10 @@ static void dchid_handle_packet(void *cookie, size_t avail)
 		goto done;
 	}
 
+	if (hdr.length < sizeof(struct dchid_subhdr)) {
+		dev_err(dchid->dev, "Packet too short for sub header: %d\n", hdr.length);
+		goto done;
+	}
 
 	if (hdr.iface >= MAX_INTERFACES) {
 		dev_err(dchid->dev, "Bad iface %d\n", hdr.iface);
@@ -1203,6 +1271,7 @@ static int dockchannel_hid_probe(struct platform_device *pdev)
 	dchid->comm = dchid_get_interface(dchid, IFACE_COMM, "comm");
 	if (!dchid->comm) {
 		dev_err(dchid->dev, "Failed to initialize comm interface");
+		destroy_workqueue(dchid->new_iface_wq);
 		return -EIO;
 	}
 
@@ -1212,6 +1281,12 @@ static int dockchannel_hid_probe(struct platform_device *pdev)
 	return 0;
 }
 
+/*
+ * There is no teardown: returning here would let devres free state that live
+ * HID devices and work items still use. sysfs unbind is suppressed and the
+ * module has no exit, but unbinding the MTP helper or the parent DockChannel
+ * still lands here.
+ */
 static void dockchannel_hid_remove(struct platform_device *pdev)
 {
 	BUG_ON(1);
@@ -1228,11 +1303,13 @@ static struct platform_driver dockchannel_hid_driver = {
 	.driver = {
 		.name = "dockchannel-hid",
 		.of_match_table = dockchannel_hid_of_match,
+		.suppress_bind_attrs = true,
 	},
 	.probe = dockchannel_hid_probe,
 	.remove = dockchannel_hid_remove,
 };
-module_platform_driver(dockchannel_hid_driver);
+/* No module_exit: rmmod gets -EBUSY instead of reaching BUG_ON(1). */
+builtin_platform_driver(dockchannel_hid_driver);
 
 MODULE_DESCRIPTION("Apple DockChannel HID transport driver");
 MODULE_AUTHOR("Hector Martin <marcan@marcan.st>");

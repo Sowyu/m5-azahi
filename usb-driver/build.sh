@@ -29,7 +29,10 @@ for v in minimal pmgr; do
   dtc -I dts -O dtb "${dtc_quiet[@]}" \
     -o "build/t6050-j714s-usb-right-$v.dtbo" "build/t6050-j714s-usb-right-$v.stripped.dts"
   fdtdump "build/t6050-j714s-usb-right-$v.dtbo" | grep -q "__local_fixups__"
-  ! fdtdump "build/t6050-j714s-usb-right-$v.dtbo" | grep -q "__symbols__"
+  # Not "! cmd": bash set -e ignores a negated command, so it could never abort.
+  if fdtdump "build/t6050-j714s-usb-right-$v.dtbo" | grep -q "__symbols__"; then
+    echo "overlay $v still has __symbols__" >&2; exit 1
+  fi
 done
 python3 mk-blob-header.py build/overlay-blobs.h \
   overlay_minimal=build/t6050-j714s-usb-right-minimal.dtbo \

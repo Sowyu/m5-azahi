@@ -13,6 +13,7 @@ import struct
 import subprocess
 import sys
 import tempfile
+if not __debug__: raise SystemExit('Refusing python -O: assert statements here are safety checks')
 
 ROOT = Path(__file__).resolve().parent.parent
 OUTPUT = ROOT / 'native-ssdroot-v3-20260906.bin'

@@ -1,6 +1,27 @@
-# Progress — 2026-09-13
+# Progress
 
-## Current departure checkpoint: USB tethering unresolved
+## 2026-09-25: offline audit, fixes and Wi-Fi PCIe groundwork (nothing installed)
+
+No hardware access. The hardware state below (2026-09-13) is still the last
+observed state. Full detail: [docs/audit-2026-09-25](docs/audit-2026-09-25/README.md).
+
+- Every PR #1 audit finding now has a verdict. Confirmed bugs are fixed with
+  tests; all host tests pass and every kernel module builds warning-free at
+  W=1 against the exact `kernel-7.0.13-400.asahi` source.
+- USB: the likely cause of the earlier `-110` live-reload failure is fixed
+  behind a default-off PHY parameter. `-71` has ranked hypotheses, no fix.
+- NVMe: lid-close sleep could remove the root disk on the read-only build;
+  sleep is now refused in source. The installed rootguard build is still
+  affected until rebuilt: set `HandleLidSwitch=ignore`.
+- Shutdown: cause identified (no power-off handler; missing
+  `apple,smc-reboot` DT node). v8 candidate builder added, not installed.
+- Wi-Fi: default-off apcie0 port-0 bring-up (loader + DT + driver fork) aims
+  to make the N1 functions visible to Linux. No N1 driver exists and native
+  Wi-Fi is not close. A USB Wi-Fi adapter is the documented stopgap.
+- Docs: the 375-line duplicate of this file inside `docs/HANDOFF.md` was
+  removed; stale "Latest" headings below are relabelled "Earlier".
+
+## Current departure checkpoint (2026-09-13): USB tethering unresolved
 
 KDE v7 boots from SSD and full-height display/175% scaling were verified.
 USB internet is currently NOT working: latest Linux phone interface is
@@ -33,7 +54,7 @@ supports the approved history cleanup. See docs/HANDOFF.md for boundaries.
 
 ## Historical checkpoints
 
-## Latest: readable scaling and persistent preferences configured
+## Earlier: readable scaling and persistent preferences configured
 
 Live KDE now reports scale2 (1512x945 logical) and Breeze Dark. Preferences
 were migrated from a per-launch /run directory to SSD-backed config with a
@@ -43,7 +64,7 @@ or boot change. Reboot persistence/stability not yet tested. The only exposed
 mode remains 3024x1890; notch strip support and native Codex setup are pending.
 See docs/HANDOFF.md for details and rollback guidance.
 
-## Latest: v6 SSD cold boot + automatic USB tethering + SSH VERIFIED
+## Earlier: v6 SSD cold boot + automatic USB tethering + SSH VERIFIED
 
 After booting with every USB-C socket empty and connecting the phone only
 after KDE loaded, the user reported USB tethering working. The helper then
@@ -309,7 +330,7 @@ is pending. Target is parked in proxy. Continue with cable/attach observation
 and documented state semantics; then an appropriate controlled test. Prior
 v6 boot address pins are stale until checked against the current session.
 
-## Latest: attended HPM proxy diagnostic prepared; live connection required
+## Earlier: attended HPM proxy diagnostic prepared; live connection required
 
 Added proxy-hpm.py and a host-only FFI bridge to the already-tested C transport.
 Thirteen offline tests pass. Explicit status-only mode verifies current loader,
@@ -328,7 +349,7 @@ If S0 is needed and verified, test whether it survives the corrected RAM boot
 and enables phone attachment. This is an untested hypothesis, not USB success.
 USB tethering remains unverified; no user network interface/DHCP/HTTPS result.
 
-## Latest: SPMI4 polling prototype passes host tests, not live-ready
+## Earlier: SPMI4 polling prototype passes host tests, not live-ready
 
 Implemented a shared C FIFO transport plus a Linux SPMI controller adapter in
 usb-driver/pd-backport. Right-HPM SID only, no reset/shutdown/flush, bounded
@@ -349,7 +370,7 @@ Current KDE remains v6 RAM handoff; persistent loader remains bad v4. The old
 four-file candidate is checksum-verified on Linux SSD. Daily macOS untouched.
 No new user typing or power cycle is needed at this checkpoint.
 
-## Latest: native inventory and generation-4 controller gap
+## Earlier: native inventory and generation-4 controller gap
 
 User reports /sys/class/typec missing and SPMI devices listing "0", interpreted
 as total 0. No registered SPMI peripheral is evidenced. This is not a measured
@@ -375,7 +396,7 @@ PD role integration and safe delivery. Do not unload current overlay or reboot.
 No new user command is requested. Candidate copy remains verified on Linux SSD;
 persistent boot remains bad v4, current KDE from v6 RAM correction. macOS untouched.
 
-## Latest: SSD copy verified; PD backport audit
+## Earlier: SSD copy verified; PD backport audit
 
 User reports four checksum OKs for /root/usb-candidate after the guarded
 new-directory copy from /run. The original candidate is now preserved on
@@ -395,7 +416,7 @@ changes S0/interrupt masks, so a PD probe is not a read-only test.
 Next native read-only inventory: ls -l /sys/bus/spmi/devices /sys/class/typec
 Send exact output, including missing-directory messages. No reboot needed.
 
-## Latest: live test timed out before phone networking
+## Earlier: live test timed out before phone networking
 
 The next user photo shows the runner's failure: no unique right-port USB
 network interface. Kernel messages at about 590.5 seconds show PHY host init
@@ -419,9 +440,9 @@ transport/PD integration, especially actual target IRQ mapping; upstream probe
 issues a wake command and is not a read-only diagnostic.
 
 This is the public, privacy-reviewed checkpoint. Historical private notes may
-contain superseded plans; the state below takes precedence.
+contain superseded plans; the current checkpoint at the top of this file takes precedence.
 
-## Latest user report and expanded publication
+## Earlier user report and expanded publication
 
 FIRST LIVE RESULT: user photo shows all stock dependency loads and the three
 candidate insmod commands completing, followed by the expected right-controller
@@ -568,7 +589,7 @@ source/configuration/note files. Personal/private data remains excluded, with
 identifying details redacted from 89 files. See the research archive manifest;
 this is not a 56 GB binary workspace backup.
 
-## Current boot incident
+## Earlier boot incident: v4 courier did not boot
 
 The known-working **aligned v3** booted native KDE from the SSD without a helper
 Mac. The later **USB courier v4** was installed and its bytes read back correctly,
@@ -661,7 +682,7 @@ No claim of working USB tethering, Internet, or persistent network configuration
 - Shutdown: reaching poweroff.target with the screen still on was observed.
   That message alone does not prove every filesystem was safely unmounted.
 
-## Next verification
+## Earlier next verification (superseded)
 
 On the target Linux terminal, **without another reboot**:
 

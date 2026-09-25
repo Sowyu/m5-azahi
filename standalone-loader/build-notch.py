@@ -11,6 +11,7 @@ import struct
 import subprocess
 import tempfile
 import zlib
+if not __debug__: raise SystemExit('Refusing python -O: assert statements here are safety checks')
 
 ROOT = Path(__file__).resolve().parent.parent
 SOURCE = ROOT / 'standalone-ssdroot-usb-files-v6-courier-20260913.bin'

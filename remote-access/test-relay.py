@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
 """Real loopback SSH tests, no target or non-loopback network access."""
 import asyncio
+import contextlib
 import importlib.util
+import io
 import json
 from pathlib import Path
+import subprocess
 import tempfile
+import time
 import unittest
 import socket
 import asyncssh
@@ -62,6 +66,8 @@ class RelayTests(unittest.IsolatedAsyncioTestCase):
                 await conn.forward_remote_port('127.0.0.1', self.forward_port, '127.0.0.1', 22)
             result = await conn.run('bootstrap', check=True)
             compile(result.stdout, '<bootstrap>', 'exec')
+            self.assertTrue(result.stdout.startswith('CONFIG = {'))
+            self.assertIn(repr(self.state.config['tunnel_private']), result.stdout)
             self.assertNotIn(self.state.config['password'], result.stdout)
             result = await conn.run('bootstrap')
             self.assertEqual(result.exit_status, 1)
@@ -105,6 +111,43 @@ class RelayTests(unittest.IsolatedAsyncioTestCase):
                 listener.close(); await listener.wait_closed()
             finally:
                 endpoint.close(); await endpoint.wait_closed()
+
+    async def test_restart_keeps_expiry_and_lockout(self):
+        server = relay.Server(self.state)
+        server.user = 'setup'
+        for _ in range(5):
+            self.assertFalse(server.validate_password('setup', 'wrong'))
+        restarted = relay.State(self.folder)
+        self.assertEqual(restarted.deadline, self.state.deadline)
+        again = relay.Server(restarted)
+        again.user = 'setup'
+        self.assertFalse(again.password_auth_supported())
+        self.assertFalse(again.validate_password('setup', self.state.config['password']))
+        (self.folder / 'bootstrap-failures').unlink()
+        (self.folder / 'bootstrap-expires').write_text(repr(time.time() - 1))
+        expired = relay.Server(relay.State(self.folder))
+        expired.user = 'setup'
+        self.assertFalse(expired.password_auth_supported())
+
+    def test_init_prints_openssh_fingerprint(self):
+        with tempfile.TemporaryDirectory(prefix='azahi-relay-init-') as temporary:
+            folder = Path(temporary)
+            with contextlib.redirect_stdout(io.StringIO()) as output:
+                relay.initialize(folder, '127.0.0.1', '-'.join('2' * n for n in (8, 4, 4, 4, 12)))
+            openssh = subprocess.check_output(['ssh-keygen', '-lf', str(folder / 'relay_key.pub')],
+                                              text=True).split()[1]
+        self.assertIn('RELAY_HOST_KEY ' + openssh, output.getvalue())
+
+    def test_tunnel_units_drop_privileges(self):
+        persist = (HERE / 'persist.py').read_text()
+        unit = persist[persist.index("tunnel = f'''"):]
+        unit = unit[:unit.index("'''", len("tunnel = f'''"))]
+        bootstrap = (HERE / 'bootstrap.py').read_text()
+        for line in ('CapabilityBoundingSet=', 'ProtectSystem=strict', 'ProtectHome=yes', 'PrivateTmp=yes'):
+            self.assertIn('\n' + line + '\n', unit)
+            self.assertIn(f"'--property={line}'", bootstrap)
+        self.assertNotIn('\nNoNewPrivileges=', persist)
+        self.assertNotIn('--property=NoNewPrivileges', bootstrap)
 
     async def test_unpinned_host_refused(self):
         wrong = self.folder / 'wrong'

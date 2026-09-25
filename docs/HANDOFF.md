@@ -1,5 +1,30 @@
 # Resume safely
 
+## 2026-09-25 offline update
+
+Offline work only; the hardware state recorded below is unchanged since
+2026-09-13. Before the next attended session, read
+[the audit summary](audit-2026-09-25/README.md). Points that change what to
+do on resumption:
+
+1. On the running system, block sleep before any lid close: the installed
+   NVMe build can lose its root disk across sleep. The exact commands, plus
+   the other daily-use settings, are in
+   [daily-driver/README.md](../daily-driver/README.md).
+2. Nothing new is installed. Any rebuilt module or loader has new hashes, so
+   the install-bundle pins must be regenerated first. The installer now also
+   pins `start-native-usb.sh` and `azahi-usb.service`.
+3. The cheapest new USB evidence is read-only: after the phone enumerates,
+   read its `power/usb2_hardware_lpm`. See the `-71` hypothesis list in
+   [kernel.md](audit-2026-09-25/kernel.md).
+4. A wired USB Ethernet or USB Wi-Fi adapter removes the phone's function
+   switching from the problem and would restore SSH; see
+   [USB-NETWORK-ADAPTERS.md](USB-NETWORK-ADAPTERS.md).
+5. Shutdown and PCIe/Wi-Fi each need a new image through Recovery, with v7
+   kept as rollback. Test plans are in
+   [tooling-loader.md](audit-2026-09-25/tooling-loader.md) and
+   [pcie.md](audit-2026-09-25/pcie.md). Run them one at a time.
+
 # USB tethering incident and resume handoff — 2026-09-13
 
 ## Read this first
@@ -335,7 +360,7 @@ No evidence of exposed credentials or compromise has been established.
 
 ## Historical checkpoints (not current status)
 
-## Latest: v7 full-height candidate installed; first cold boot pending
+## Earlier: v7 full-height candidate installed; first cold boot pending
 
 Fresh backup confirmed the selected working v6 image before installation.
 Recovery installation readback now matches v7 SHA256
@@ -346,7 +371,7 @@ Linux boot/display result yet. Next boot with every USB-C socket empty;
 connect phone after KDE loads. Check full display mode, settings persistence,
 USB/SSH/HTTPS before declaring success. Private recovery server remains up.
 
-## Newest: opt-in full-height framebuffer candidate built, NOT installed
+## Earlier: opt-in full-height framebuffer candidate built, NOT installed
 
 User explicitly overrode local bootloader AI restrictions for this personal
 project. The private candidate retains original firmware framebuffer geometry
@@ -364,7 +389,7 @@ backup/test/install workflow pinned to current v6 before requesting Recovery.
 Do not reuse old repair server pins. Full height also exposes the physical
 notch, so desktop notch avoidance is a separate usability consideration.
 
-## Latest: persistent KDE preferences configured, reboot test pending
+## Earlier: persistent KDE preferences configured, reboot test pending
 
 The installed launcher created a new /run/kde-clean directory each launch,
 explaining lost preferences despite the SSD root. A backup-backed migration
@@ -382,382 +407,14 @@ Private backup directories and preferences stay on the native laptop. Restore
 the backed-up launcher to return to per-launch clean settings if needed.
 Codex CLI installation is still pending; don't assume native agent access.
 
-## Latest: v6 SSD cold boot + automatic USB tethering + SSH VERIFIED
+## Older checkpoints
 
-After booting with every USB-C socket empty and connecting the phone only
-after KDE loaded, the user reported USB tethering working. The helper then
-reconnected using the existing pinned SSH keys WITHOUT a new bootstrap,
-proxy payload, manual module command or network-profile creation.
+The checkpoints from the v6 SSD cold-boot verification back to the first
+native USB inventory are kept once, in [PROGRESS.md](../PROGRESS.md) under
+"Historical checkpoints". Until 2026-09-25 they were duplicated here
+verbatim.
 
-Direct native checks confirm:
-- Root is the intended SSD Btrfs filesystem.
-- azahi-usb.service started at boot and reported USB_HOST_READY at ~8 seconds.
-- Native HPM mode=awake, result=0, ready=Y, poisoned=N.
-- The saved azahi-usb-tether profile is active on the USB interface.
-- Both persistent SSH services are active; all three task units and chronyd enabled.
-- Interface-bound certificate-validated HTTPS GET returned HTTP200.
-- Clock synchronized; no failed systemd units and no APFS mounts.
-- CPU online remains only CPU0; Wi-Fi and native GPU still unresolved.
-
-This establishes ONE successful cold boot with automatic Linux-side USB and
-SSH startup, not general reliability or arbitrary hotplug support. Working
-procedure: leave every USB-C socket empty while starting Linux; MagSafe may
-remain. Connect the phone after KDE loads and enable tethering on the phone.
-Boot/internet no longer require a helper payload. Remote SSH still requires
-the same private helper relay running and reachable on the configured network.
-
-Preserve this working session. Do not reload minimal, unload the live overlay
-or repeat DWC3 live reload: that failed with -110 on the earlier boot. Boot
-with a cable present can trigger the deliberate connected-state HPM refusal.
-Shutdown can still hang at poweroff.target; do not claim it is fixed.
-No kernel/runtime update, new power-role task, disk resize, or daily-macOS
-change accompanied this successful boot verification.
-
-## Earlier: native HPM wake works; DWC3 live reload fails with -110
-
-On the v6 cold boot, unplugging USB-C cables and loading the native helper
-in awake mode yielded result=0, ready=1, poisoned=0, state=0. Phone charging
-returned. A connected read-only probe matched the prior working session's
-power/data-role tuple, but the phone still had no USB data enumeration.
-
-The isolated DWC3 removal returned quietly; its subsequent probe FAILED:
-controller soft reset timed out (-110), leaving no USB buses. A successful
-insmod exit did not mean the device probe succeeded. Do not repeat this live
-reload as a recovery recipe or unload the applied overlay. PHY/clock/reset
-reinitialization remains a driver limitation to investigate, not a proven fix.
-Four host glue tests pass, including a new actual-remove-function control-flow
-test; these do NOT establish successful physical controller reinitialization.
-
-Next attended test: save work and power off normally, then boot Linux with
-EVERY USB-C socket empty (MagSafe may remain). This avoids the initial
-connected-state refusal and lets the saved service attempt HPM wake before
-first USB-controller initialization. Wait for KDE before plugging the phone.
-No further reset-register experiment or Recovery enrollment is needed for
-this test. Cold-boot tethering is still unverified; prior working-boot proof
-must not be presented as reliable automatic startup.
-
-## Earlier: v6 cold boot reaches KDE; USB startup FAILED
-
-User reports KDE booted after the attended v6 shutdown/startup test, without
-a new helper payload. This is the first reported cold boot of installed v6.
-However, the phone does not charge and USB tethering is unavailable. The user
-also tried the minimal driver command; its detailed result is not yet known.
-
-Native SSH is currently unreachable (reverse-forward listener absent).
-Prior working-boot tethering/SSH evidence remains valid, but automatic USB
-initialization across cold boot is NOT working. Do not call this a successful
-autonomous network setup. Need azahi-usb service journal and azahi-hpm kernel
-messages before assigning a cause. No repeated minimal command, driver unload,
-blind HPM retry, power-register write or reboot. Preserve KDE and obtain logs.
-
-## Earlier: corrected v6 installed and readback verified; cold boot NEXT
-
-The attended Recovery repair passed its fresh snapshot gate and installed
-the corrected v6 loader. The uploaded readback matches the exact previously
-RAM-booted v6 SHA256 and 92651520-byte size. Linux volume identities and
-policy transition passed; final Linux Preboot is read-only. The v3 rollback
-image and pre-install v4 backup remain preserved. No daily macOS change.
-
-Cold boot is NOT yet tested. Next: orderly Recovery shutdown, unplug phone
-and helper data cables (keep charger), select Linux from startup options.
-Wait for KDE before reconnecting the phone and enabling tethering. The native
-USB startup helper needs its first state-7-to-S0 boot test; saved SSH tunnel
-should reconnect once tethering is active and the same helper is reachable.
-Do not send a proxy payload: this test must use the newly installed loader.
-
-## Earlier: native SSH and guarded startup installed; cold boot still pending
-
-USB tethering is verified by direct native SSH: DHCP/DNS and interface-bound,
-certificate-validated HTTPS GET and HEAD succeed. The earlier TLS failure
-cleared after clock synchronization. The helper now has task-key-only SSH
-access through a pinned, loopback-only reverse tunnel; no public/LAN root
-listener or global sshd change was made.
-
-Dedicated persistent SSH services were installed, enabled and live-switched
-successfully with rollback protection. A reconnect and HTTPS GET passed.
-The dedicated USB NetworkManager autoconnect profile is saved; the existing
-working connection was not interrupted. chronyd remains enabled. make was
-installed; GCC/toolchain upgrades were deliberately held because the solver
-also wanted core runtime upgrades. No kernel or core runtime upgrade occurred.
-
-A narrow native HPM helper was built against the exact running kernel.
-Live status-only and logical read-only probes both passed; HPM is already in
-S0 and networking remained usable. Its SSPS path is guarded to the previously
-observed disconnected state-7 tuple, with fault latching and no reset/role
-override. Native state-7-to-S0 execution is NOT yet live-tested. Three groups
-of protocol tests pass, including all 32 status-bit deviations and faults.
-
-azahi-usb.service is installed and enabled. Its live already-loaded branch
-preserves the working USB controller and passed; eight mocked startup tests
-cover clean load, partial load, hash/root refusal, poisoned/no-ready state,
-clean refusal recheck, driver failure and missing root hub. Four real
-loopback SSH tests pass on isolated ports. No failed native systemd units;
-all three saved services active and HTTPS GET 200 after installation.
-
-CRITICAL remaining issue: installed boot object is still bad v4, which stops
-in proxy. This Linux session came from corrected v6 RAM handoff. Do not claim
-standalone cold-boot success. The v6 loader needs Linux-paired Recovery
-enrollment, fresh verified backup, user authentication and an attended boot
-test. Do not run the old transfer server unchanged: it targets bad v4.
-For first native HPM cold-boot test, phone should initially be unplugged;
-a connected state-7 partner causes clean refusal rather than unsafe writes.
-
-Preserve the current KDE/USB session. No reboot, APFS mount/write, partition
-change or daily-macOS access was performed for these native installations.
-Photos, generated SSH keys/state, addresses, device IDs and private receipts
-must never be published. Only reviewed source/tests and sanitized results
-belong in the public repository.
-
-## Earlier: native remote-access relay prepared; user bootstrap pending
-
-User approved secure remote access and automatic boot/network startup.
-Phone is confirmed on the same Wi-Fi as the helper. A dedicated SSH relay
-has been prepared, with task-specific keys and a fingerprint-verified,
-one-use password bootstrap. The native script checks kernel/model/Linux-root
-identity and creates a loopback-only key-authenticated sshd plus a fixed
-reverse tunnel, using unique runtime state and transient systemd services.
-It does not alter global sshd config, existing keys, firewall or boot files.
-
-Four real loopback SSH integration tests pass: wrong credentials/host key,
-one-use bootstrap, arbitrary command and local-forward refusal, exact
-loopback remote-forward restriction, host-key pinning and actual tunnel data.
-Pinned helper-only dependencies are in remote-access/requirements.txt.
-The helper listener is running; no native connection or installation is yet
-verified. The user has the short setup commands and fingerprint. Do not infer
-that simply having internet makes an inbound SSH route available.
-
-Next: verify native connection and fresh read-only inventory; preserve the
-working USB session. Then plan/install native startup components with scoped
-backups. Persistent loader correction and HPM initialization are still
-unfinished; no reboot, power cycle or macOS write was performed here.
-Generated keys, passwords, setup payloads and private host addresses must
-never be exported. Only the five reviewed remote-access source files were
-enrolled in both publication allowlists; all privacy checks remain enabled.
-
-## Earlier: certificate-validated HTTPS over USB confirmed
-
-User screen evidence shows chronyd restart, chronyc makestep returning
-200 OK, and UTC date corrected to September 13, 2026. A subsequent curl
-HEAD request with --noproxy '*' and --interface enu1 to the Asahi HTTPS site
-returned HTTP/2 200 with certificate verification enabled (no insecure flag).
-Together with prior DHCP, DNS, external ping and browser evidence, native
-USB tethering is confirmed working for this boot. The earlier certificate
-error cleared after clock correction. This is a successful HEAD test, not
-a rerun of the original runner's GET test or a bandwidth/stability benchmark.
-
-Next efficiency improvement: establish authenticated native remote access
-so commands/logs can move directly, rather than user typing/photos. No SSH,
-remote agent or inbound reachability is configured/verified yet; phone NAT
-may require a deliberate connection route. Network access also permits native
-downloads. Do not assume autonomous or reboot-persistent operation: current
-HPM setup was from proxy and permanent loader still needs correction.
-No reboot, new driver load, remote-access setup or macOS change was performed
-for this milestone. Photos and raw request/device identifiers remain private.
-
-## Earlier: native USB tethering works; HTTPS clock error remains
-
-User-provided screen evidence shows the preserved candidate loaded on native
-Linux and a unique right-port USB network interface, enu1, was identified.
-NetworkManager activation succeeded and DHCP assigned a private IPv4 address.
-DNS resolution and repeated external ping replies succeeded; Firefox loaded
-Google search results. User confirms USB tethering is enabled on the phone.
-This establishes working native tethering for this boot.
-
-The runner's stricter interface-bound HTTPS test failed with curl error60:
-"certificate is not yet valid", HTTP000. Do not misreport this as HTTPS-test
-success or bypass certificate validation. The previously incorrect Linux
-clock is the leading explanation; correct/synchronize it and rerun only the
-HTTPS check, NOT the driver-loading script. No current target date output has
-yet confirmed the clock diagnosis.
-
-Do not reboot or unload/reload the applied overlay. Permanent boot remains
-bad v4, current Linux used the verified v6 RAM handoff, and HPM awake setup
-was performed from proxy. Network profile is temporary and this is NOT a
-reboot-persistent networking fix. Next: clock/TLS verification, then native
-remote access and deliberate persistent initialization work. Daily macOS
-remains untouched. Photos, private IP/MAC/connection identifiers and raw logs
-are excluded from publication.
-
-## Earlier: system-awake task succeeded; phone charging and host/source confirmed
-
-Cable correlation passed: unplugging only the phone cleared attachment,
-power and data status on the audited right-port HPM. The phone was left
-disconnected for a separately gated SSPS(S0) startup experiment, following
-the pinned upstream SN201202x initialization path. This mode requires the
-exact observed empty-port tuple; the general S0 guard remains unchanged.
-It does not assert that the persistent status bit28 is electrically harmless.
-
-The single task returned zero and system-state readback changed 7 to 0;
-the port remained disconnected. No reset, power-role-swap, forced-device
-task, IRQ-mask write or persistent boot change was issued. After reconnect,
-the user reports charging. Readback: status 0x108280fd, power 0x0f0d,
-data 0x80000073, system state0, task result0. Pinned role definitions now
-confirm host/source. This is physical charging + role evidence, NOT yet
-USB device enumeration, DHCP or working tethering.
-
-Nineteen offline HPM/FFI tests pass, including all 32 one-bit deviations
-from the narrowly permitted disconnected status, incorrect power/data/state,
-and preservation of the default refusal behavior. The fresh-address,
-hash-verified v6 RAM handoff completed for the native tethering test.
-Full original payload hash and every replacement chunk's readback passed;
-the original loader returned success and the expected next stage was verified.
-User was asked to run the preserved SSD candidate and enable phone tethering.
-Permanent v4 boot remains unchanged. Daily macOS remains untouched.
-
-## Earlier: attached-port roles conflict with phone UI; SWDF rejected
-
-An attachment snapshot now reports status 0x1000b41d, power status 0x0f3f,
-data status 0x800000f3 and system state 7. With the pinned tipd definitions,
-these indicate a connected sink/device rather than source/host. However,
-the phone reports "USB controlled by Connected device" already selected.
-Physical cable-to-controller correlation must therefore precede further tasks;
-do not treat the interpretation as a confirmed phone-role diagnosis.
-
-One SWDF data-role request completed with task result 3 (rejected), leaving
-roles/state unchanged. No retry, power-role swap, SSPS, forced-device-policy
-command, reset, IRQ-mask write, disk write or boot change was issued.
-A fresh snapshot confirmed the same values. Proxy remains parked and healthy.
-USB tethering is NOT working or verified.
-
-The host diagnostic now has a separately gated one-shot data-role mode,
-captures task status/result, and passes 16 offline tests. Existing S0 guards
-remain unchanged. Saved firmware contains a forceUSBDeviceMode(false) path
-using UFPf with zero payload, but applicability and active policy are unproven;
-no UFPf command was sent. Do not infer that this justifies bypassing guards.
-
-Fresh RAM layout differs from the old v6 script pins. Loader prefix/function
-verification passed, next-stage entry is zero and no live secondaries were
-found. Do not run the old RAM handoff script unchanged. Daily macOS is untouched.
-
-## Earlier: live SPMI4/HPM reads succeed; power-state change withheld
-
-The helper proxy appeared. Fresh loader/ADT/right-HPM identity passed.
-Controller power 0x0f0000ff and FIFO 0x40004000 were read before bus commands.
-WAKEUP, selector polling and logical-register reads completed successfully
-using the shared C transport. Two snapshots: APP mode, VID0x28,
-status0x10000000, system state7, power/data status zero.
-
-No SSPS/S0 task, IRQ mask, reset, disk write or boot change was issued.
-State7 and status bit28 require interpretation; the older driver labels the
-latter a voltage warning. Existing S0 guard rejects this combination and
-must not simply be removed to make a test proceed. USB remains unverified.
-
-User was asked to connect the Nothing phone to the right socket (if free),
-leaving the helper cable connected, and report charging. The physical check
-is pending. Target is parked in proxy. Continue with cable/attach observation
-and documented state semantics; then an appropriate controlled test. Prior
-v6 boot address pins are stale until checked against the current session.
-
-## Latest: attended HPM proxy diagnostic prepared; live connection required
-
-Added proxy-hpm.py and a host-only FFI bridge to the already-tested C transport.
-Thirteen offline tests pass. Explicit status-only mode verifies current loader,
-ADT, right-HPM identity, controller power and FIFO state. Probe adds wake and
-logical selections; a separately gated S0 mode permits only the documented
-SSPS system-awake task with safety checks and completion/result/state readback.
-No disk writes, boot changes, controller resets or IRQ-mask writes are present.
-The original USB delivery bundle and Linux modules remain unchanged.
-
-No live HPM command has been issued. Helper currently has no proxy serial port.
-User has been asked to save Linux work, reconnect the known helper cable/socket
-and boot the Linux entry to Running proxy. Do not boot Recovery or touch daily
-macOS. Do not reuse stale v6 RAM addresses: inspect fresh identity/layout first.
-Next: status-only proxy check, then controlled HPM probe if power/FIFO healthy.
-If S0 is needed and verified, test whether it survives the corrected RAM boot
-and enables phone attachment. This is an untested hypothesis, not USB success.
-USB tethering remains unverified; no user network interface/DHCP/HTTPS result.
-
-## Latest: SPMI4 polling prototype passes host tests, not live-ready
-
-Implemented a shared C FIFO transport plus a Linux SPMI controller adapter in
-usb-driver/pd-backport. Right-HPM SID only, no reset/shutdown/flush, bounded
-polling, strict reply checks, no partial read output and latched failure.
-Both probe and transactions default disabled. No IRQ domain or DT overlay.
-
-Four host test groups pass under AddressSanitizer/UndefinedBehaviorSanitizer:
-independent command encodings; all extended lengths/address boundaries;
-invalid requests with no IO; and timeout/malformed-reply/failure-latch cases.
-Controller compilation, combined linking and modpost pass against the exact
-target kernel headers. No loadable module, target write or delivery change.
-
-This does NOT fix tethering yet. Next: audit HPM selector/wake completion and
-implement justified polling or IRQ integration, with ownership/power/lifecycle
-review before any live test. Upstream PD probe cannot just bind to this adapter
-and is not read-only. Do not unload the USB overlay or request a casual reboot.
-Current KDE remains v6 RAM handoff; persistent loader remains bad v4. The old
-four-file candidate is checksum-verified on Linux SSD. Daily macOS untouched.
-No new user typing or power cycle is needed at this checkpoint.
-
-## Latest: native inventory and generation-4 controller gap
-
-User reports /sys/class/typec missing and SPMI devices listing "0", interpreted
-as total 0. No registered SPMI peripheral is evidenced. This is not a measured
-VBUS diagnosis and does not establish the physical connection's failure cause.
-
-Host audit confirmed target nub-spmi-a1 is generation 4. Existing 7.0.13
-controller source uses old FIFO offsets and lacks command/IRQ support; both
-Fedora patchsets leave drivers/spmi unchanged. Even the newer pinned Asahi
-IRQ-capable controller retains the old register layout. Do not bind it by
-simply adding a compatible string. Saved Apple initialization confirms gen4
-FIFO offsets 0x200/0x210/0x220, RX-empty bit30, IRQ banks0x400/0x600 stride4.
-Seven hash-pinned offline checks pass; no MMIO or target driver changes.
-
-A separate compile-only compatibility patch removes the newer dedicated
-Thunderbolt-switch hooks, preserving generic Type-C/mux code and unchanged
-SPMI transport. Patched core+transport+trace compile/link and pass modpost;
-unmodified control still fails as expected. No fake-success stubs or loadable
-module. This is NOT a complete USB2-only driver or hardware success.
-
-Next engineering: implement/audit actual generation-4 controller ownership,
-commands, bounded FIFO handling and interrupts (or justified polling); then
-PD role integration and safe delivery. Do not unload current overlay or reboot.
-No new user command is requested. Candidate copy remains verified on Linux SSD;
-persistent boot remains bad v4, current KDE from v6 RAM correction. macOS untouched.
-
-## Latest: SSD copy verified; PD backport audit
-
-User reports four checksum OKs for /root/usb-candidate after the guarded
-new-directory copy from /run. The original candidate is now preserved on
-Linux's SSD; this is NOT a persistent boot fix. Do not reboot or unload.
-
-New host-only feasibility check lives under usb-driver/pd-backport. Seven
-unmodified, hash-pinned Asahi source/config files were fetched. Against the
-exact target headers, SPMI transport and trace compile; shared core fails on
-15 diagnostics for newer Type-C/Thunderbolt switch APIs. No compatibility
-stubs, loadable module, target writes or delivery changes. Modpost not reached.
-
-Saved Linux DTB contains no SPMI/USB-PD nodes. Saved right-port HPM interrupt
-types are 0/2/3 for IRQs 11/17/19; upstream needs four named IRQs. Its example's
-select IRQ13 remains unverified for this target. Probe issues WAKEUP and core
-changes S0/interrupt masks, so a PD probe is not a read-only test.
-
-Next native read-only inventory: ls -l /sys/bus/spmi/devices /sys/class/typec
-Send exact output, including missing-directory messages. No reboot needed.
-
-## Latest: live test timed out before phone networking
-
-The next user photo shows the runner's failure: no unique right-port USB
-network interface. Kernel messages at about 590.5 seconds show PHY host init
-completion, xHCI USB2/USB3 root hubs (Linux IDs 1d6b:0002 and 1d6b:0003),
-one port on each, and "host mode up (state 2)". These are controller root hubs,
-not the phone. No child-device attach or descriptor error appears in the
-displayed tail. The shell prompt returned; no kernel hang is shown.
-
-The user previously reported no phone charging and grey tethering. Whether
-the requested reconnect was performed is not separately confirmed. VBUS /
-Type-C role handling remains a hypothesis, not an electrical measurement;
-cable and PHY issues remain possible. No networking, DHCP or HTTPS success.
-Do not rerun or unload the applied overlay. Persistent boot remains bad v4;
-this session used the v6 RAM correction. No reboot requested.
-
-Next: preserve the checked courier directory from /run to a fresh directory
-under /root on the already verified Linux SSD root, then verify its manifest.
-Do not overwrite an existing destination or touch daily macOS. Copy outcome
-is pending. Subsequent engineering should audit the missing SN201202x SPMI
-transport/PD integration, especially actual target IRQ mapping; upstream probe
-issues a wake command and is not a read-only diagnostic.
-
-## Immediate state
+## Earlier immediate state (superseded)
 
 LATEST LIVE PHOTO: the runner reached the right-controller root hub
 `/sys/devices/platform/soc/382280000.usb/xhci-hcd.0.auto/usb1` after loading
@@ -893,7 +550,7 @@ Do not treat missing files as a reason to repartition or format anything.
 - Prefer short commands and audio prompts when user interaction is needed.
   Never claim an audible prompt was heard merely because playback succeeded.
 
-## Order of work
+## Earlier order of work (superseded)
 
 1. Confirm native boot and RAM courier delivery; verify file hashes.
 2. Review/run diagnostic-only USB preflight on the verified private candidate.

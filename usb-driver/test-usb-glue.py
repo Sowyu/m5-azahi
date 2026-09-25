@@ -135,6 +135,108 @@ int main(void) {
                             str(path / 'test.c'), '-o', str(path / 'test')], check=True)
             subprocess.run([str(path / 'test')], check=True)
 
+    def test_phy_reinit_after_shutdown_is_gated(self):
+        source = (HERE / 'phy-apple-t6050-usb2.c').read_text()
+        defines = '\n'.join(line for line in source.splitlines()
+                            if line.startswith('#define USB2PHY_'))
+        names = ['struct t6050_tunable {', 'struct t6050_usb2_phy {']
+        structs = '\n'.join(function(source, n) + ';' for n in names)
+        bodies = '\n'.join(function(source, s) for s in (
+            'static inline void t6050_mask32(', 'static inline void t6050_set32(',
+            'static inline void t6050_clear32(', 'static void t6050_usb2_dump(',
+            'static void t6050_apply_tunables(', 'static void t6050_usb2_shutdown_seq(',
+            'static void t6050_usb2_init_seq(', 'static int t6050_usb2_power_on(',
+            'static int t6050_usb2_power_off(', 'static bool t6050_usb2_is_shut_down(',
+            'static int t6050_usb2_init(', 'static int t6050_usb2_exit('))
+        harness = r'''
+#include <assert.h>
+#include <stdbool.h>
+#include <string.h>
+#include <errno.h>
+typedef unsigned int u32;
+#define __iomem
+#define BIT(n) (1u << (n))
+#define GENMASK(h, l) (((~0u) >> (31 - (h))) & ~((1u << (l)) - 1))
+#define FIELD_PREP(m, v) (((u32)(v) << __builtin_ctz(m)) & (m))
+#define FIELD_GET(m, v) (((v) & (m)) >> __builtin_ctz(m))
+#define TUNABLE_MAX_ENTRIES 16
+#define READ_ONCE(x) (x)
+#define guard(x) lock_guard
+struct device;
+static void dev_info(struct device *d, const char *f, ...) { (void)d; (void)f; }
+static void dev_warn(struct device *d, const char *f, ...) { (void)d; (void)f; }
+static void dev_dbg(struct device *d, const char *f, ...) { (void)d; (void)f; }
+enum phy_mode { PHY_MODE_INVALID, PHY_MODE_USB_HOST };
+struct mutex { int unused; };
+struct device { int unused; };
+struct phy { void *drvdata; };
+static void lock_guard(struct mutex *m) { (void)m; }
+static void *phy_get_drvdata(struct phy *p) { return p->drvdata; }
+static void msleep(int ms) { (void)ms; }
+static void udelay(int us) { (void)us; }
+static int writes;
+static u32 readl(const void *p) { u32 v; memcpy(&v, p, 4); return v; }
+static void writel(u32 v, void *p) { ++writes; memcpy(p, &v, 4); }
+static bool reinit_after_shutdown;
+'''
+        cases = r'''
+static u32 bank0[0x4000 / 4], bank1[0x4000 / 4];
+static void set_state(bool shut_down) {
+    memset(bank0, 0, sizeof(bank0)); memset(bank1, 0, sizeof(bank1));
+    if (shut_down) {
+        bank0[USB2PHY_CTL / 4] = USB2PHY_CTL_RESET | USB2PHY_CTL_PORT_RESET | USB2PHY_CTL_SIDDQ;
+        bank0[USB2PHY_USBCTL / 4] = USB2PHY_USBCTL_MODE_ISOLATION;
+        bank0[USB2PHY_MISCTUNE / 4] = USB2PHY_MISCTUNE_APBCLK_GATE_OFF | USB2PHY_MISCTUNE_REFCLK_GATE_OFF;
+    } else {
+        bank0[USB2PHY_USBCTL / 4] = USB2PHY_USBCTL_MODE_RUN;
+    }
+    writes = 0;
+}
+static bool running(void) {
+    return !(bank0[USB2PHY_CTL / 4] & (USB2PHY_CTL_RESET | USB2PHY_CTL_SIDDQ)) &&
+           !(bank0[USB2PHY_MISCTUNE / 4] & (USB2PHY_MISCTUNE_APBCLK_GATE_OFF | USB2PHY_MISCTUNE_REFCLK_GATE_OFF)) &&
+           (bank0[USB2PHY_USBCTL / 4] & 7) == USB2PHY_USBCTL_MODE_RUN;
+}
+int main(void) {
+    struct t6050_usb2_phy t = {0};
+    struct phy p = { &t };
+    t.usb2 = (void *)bank0; t.evt = (void *)bank1; t.mode = PHY_MODE_USB_HOST;
+
+    /* Default off: init never writes, loader-running and shut-down alike. */
+    for (int s = 0; s < 2; s++) {
+        set_state(s); t.powered = false; reinit_after_shutdown = false;
+        assert(t6050_usb2_init(&p) == 0 && writes == 0 && !t.powered);
+        assert(t6050_usb2_exit(&p) == 0 && writes == 0);
+    }
+    /* Loader-running PHY: even when enabled, init leaves it to power_on. */
+    set_state(false); reinit_after_shutdown = true;
+    assert(t6050_usb2_init(&p) == 0 && writes == 0 && !t.powered);
+    assert(t6050_usb2_power_on(&p) == 0 && writes > 0 && t.powered && running());
+    assert(t6050_usb2_power_off(&p) == 0 && !t.powered && !running());
+    /* Shut-down PHY with the parameter: init brings it up, power_on is then a no-op. */
+    set_state(true); reinit_after_shutdown = true;
+    assert(t6050_usb2_init(&p) == 0 && writes > 0 && t.powered && running());
+    writes = 0;
+    assert(t6050_usb2_power_on(&p) == 0 && writes == 0);
+    assert(t6050_usb2_power_off(&p) == 0 && !t.powered && t6050_usb2_is_shut_down(&t));
+    writes = 0;
+    assert(t6050_usb2_exit(&p) == 0 && writes == 0);
+    /* dwc3 error path after init (soft reset failed): exit shuts it down again. */
+    set_state(true);
+    assert(t6050_usb2_init(&p) == 0 && t.powered);
+    assert(t6050_usb2_exit(&p) == 0 && !t.powered && t6050_usb2_is_shut_down(&t));
+    return 0;
+}
+'''
+        with tempfile.TemporaryDirectory(prefix='usb-phy-test-') as temporary:
+            path = Path(temporary)
+            (path / 'test.c').write_text(harness + defines + '\n' + structs + '\n' +
+                                         bodies + cases)
+            subprocess.run(['/usr/bin/cc', '-std=gnu11', '-Wall', '-Werror',
+                            '-Wno-unused-function', str(path / 'test.c'),
+                            '-o', str(path / 'test')], check=True)
+            subprocess.run([str(path / 'test')], check=True)
+
     def test_fixed_host_does_not_register_role_switch(self):
         source = (HERE / 'dwc3-apple-t6050.c').read_text()
         probe = function(source, 'static int dwc3_apple_probe(')

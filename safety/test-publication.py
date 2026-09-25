@@ -68,7 +68,17 @@ class ContentTests(unittest.TestCase):
             'upload-capability': b'/upload/' + b'a' * 32,
             'url-credentials': b'https://' + b'user:example-password@host.invalid',
             'literal-secret': b'password' + b'="synthetic-value-only"',
+            'private-net': b'.'.join([b'100', b'101', b'102', b'103']),
+            'quoted-secret': b'{"pass' + b'word": "synthetic-value-only"}',
         }
+        for rule, data in (('private-net', b'fd12' + b':3456:789a::1'), ('private-net', b'fe80' + b'::1'),
+                           ('private-net', b'169.' + b'254.10.5'),
+                           ('literal-secret', b'PASSWORD' + b'="synthetic-value" # note'),
+                           ('private-key', b'-----BEGIN PGP ' + b'PRIVATE KEY BLOCK-----'),
+                           ('private-key', b'b3BlbnNzaC1r' + b'ZXktdjEAAAAA'),
+                           ('mac-address', b'-'.join([b'a4'] * 6)), ('mac-address', b'a483.' + b'e711.2233')):
+            with self.subTest(rule=rule, data=data):
+                self.assertIn(rule, self.problems(data))
         for rule, data in samples.items():
             with self.subTest(rule=rule):
                 self.assertIn(rule, self.problems(data))
