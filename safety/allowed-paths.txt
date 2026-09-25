@@ -15,6 +15,7 @@ docs/audit/tooling.md
 docs/audit-2026-09-25/kernel.md
 docs/audit-2026-09-25/tooling-loader.md
 docs/audit-2026-09-25/pcie.md
+docs/audit-2026-09-25/smp.md
 docs/audit-2026-09-25/README.md
 docs/PROVENANCE.md
 docs/PUBLICATION-SAFETY.md
@@ -334,6 +335,8 @@ safety/pre-commit
 safety/pre-push
 safety/test-assert-guards.py
 safety/test-publication.py
+smp/README.md
+smp/test-smp-diag.py
 standalone-loader/README.md
 standalone-loader/build-aligned.py
 standalone-loader/build-bundle.py
@@ -341,6 +344,8 @@ standalone-loader/build-shutdown.py
 standalone-loader/m1n1-20260911/LICENSE
 standalone-loader/m1n1-20260911/src/azahi_pcie.c
 standalone-loader/m1n1-20260911/src/azahi_pcie.h
+standalone-loader/m1n1-20260911/src/azahi_smp.c
+standalone-loader/m1n1-20260911/src/azahi_smp.h
 standalone-loader/m1n1-20260911/src/azahi_standalone.c
 standalone-loader/m1n1-20260911/src/azahi_standalone.h
 usb-driver/README.md

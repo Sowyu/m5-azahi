@@ -12,6 +12,7 @@ attended test with rollback.
 | [kernel.md](kernel.md) | USB PHY, DWC3 glue, overlay, SPMI4/HPM, DockChannel HID, ANS NVMe, SART |
 | [tooling-loader.md](tooling-loader.md) | remote access, publication guard, USB/loader tooling, loader C, archived DTs, shutdown |
 | [pcie.md](pcie.md) | apcie0 root port, DART and DT for the Apple N1 Wi-Fi functions |
+| [smp.md](smp.md) | why only one of 18 CPU cores starts, and a read-only loader probe to decide it |
 
 Every finding in the PR #1 audit (`docs/audit/` on that branch) got a
 verdict: fixed, confirmed but left open with a reason, or rejected with the
@@ -72,6 +73,7 @@ With `CC=gcc` on an x86_64 Linux host:
 | standalone-loader/test-notch.py | pass |
 | pcie-driver/test-pcie-dt.py (with the ADT JSON) | 16 pass |
 | daily-driver/test-apply-safe-config.py | 8 pass |
+| smp/test-smp-diag.py | 5 pass |
 
 Every kernel module in the repo builds with zero warnings at `W=1` against
 `kernel-7.0.13-400.asahi` configured from `research-archive/kconfig.txt`

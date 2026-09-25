@@ -103,7 +103,10 @@ systemctl --failed                        # nothing
 - **Real power-off.** Install the v8 image from
   `standalone-loader/build-shutdown.py` through Recovery, keeping v7 as
   rollback. Test plan: `docs/audit-2026-09-25/tooling-loader.md`.
-- **More CPU cores.** Under investigation offline; not usable yet.
+- **More CPU cores.** Not usable yet. A read-only loader probe
+  (`azahi.smp=probe`, see `docs/audit-2026-09-25/smp.md`) decides in one
+  attended boot whether a small loader change can start them or whether
+  Apple's secure monitor blocks it.
 - **Trackpad retry and the input driver fixes.** These need the rebuilt
   input module and a boot test with a rollback that doesn't depend on the
   keyboard, such as SSH over the USB adapter.

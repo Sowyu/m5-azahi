@@ -34,7 +34,7 @@ a daily-use machine. Never use the reference disk geometry on another SSD.**
 | Native Linux / SSD root | Native Fedora KDE from Btrfs SSD root demonstrated. Lid-close sleep can drop the root disk on the installed build: set `HandleLidSwitch=ignore` |
 | Autonomous boot | v7 SSD KDE cold boot verified; does not establish reliable USB networking |
 | Corrected v6 | RAM boot reached KDE; Recovery installation and exact readback verified |
-| CPU | One core; secondary-core startup unresolved |
+| CPU | One core; secondary-core startup unresolved. Two ranked hypotheses and a default-off read-only probe exist, untested |
 | Graphics | Software rendering; no native GPU acceleration |
 | Keyboard | Working, with past compositor-related lag |
 | Trackpad | Working on some boots; intermittent early AFE startup failure |
@@ -70,6 +70,8 @@ working recipe. Live USB-controller reload is unsafe and previously failed.
   this is **not** a complete m1n1 checkout.
 - `pcie-driver/`: default-off apcie0 port-0 description and driver fork for the
   Apple N1 Wi-Fi functions; untested on hardware.
+- `smp/`: secondary-CPU startup diagnosis notes and host guard for the
+  default-off loader probe.
 - `probe/`, `ramroot/`: selected SSD-root packaging and CPIO tooling.
 - `docs/`: current findings, safety constraints, test instructions and publication scope.
 - [`research-archive/`](research-archive/README-PUBLIC-ARCHIVE.md): 284 additional
