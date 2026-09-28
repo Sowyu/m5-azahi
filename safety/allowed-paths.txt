@@ -466,3 +466,4 @@ standalone-loader/smp-shared-state.patch
 smp/test-smp-shared-state.py
 nvme-driver/delete-nowait.patch
 nvme-driver/test-delete-nowait.py
+input-driver/test-firmware-lifetime.py

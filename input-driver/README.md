@@ -14,7 +14,8 @@ The 2026-09-28 local source no longer depends on a private `hid-ids.h` path.
 with the exact public devel RPM and the other required arguments from the
 [Linux build instructions](../docs/BUILD-AND-TEST.md). Strict export/vermagic
 checks pass. Firmware lookup now requires a zero success result before its
-outputs are consumed; the eight host test groups pass with GCC and ASan/UBSan.
+outputs are consumed. Eight original host groups and three firmware-lifetime
+groups pass with GCC and ASan/UBSan.
 No updated input module is installed, and intermittent AFE startup remains
 unresolved.
 
@@ -98,7 +99,7 @@ it has not verified those assumptions during hardware reset. A stalled
 partial packet remains pending. TX timeout behavior and teardown are unchanged.
 
 Base HID source SHA-256:
-`8348ec19d7178e4c3a73a39ea6725919f9812189113a798f1bd86748e351d2be`.
+`ac8711e9da3c1b4b0d8abee5d72a0e5d81436b3c80ee1137d2b98f2e4fa301c7`.
 The test pins this source and applies the patch in a temporary copy:
 
 ```sh
@@ -116,7 +117,7 @@ The optional `dockchannel-hid.ko` passes exact-header AArch64 compilation,
 strict modpost, imports, vermagic and module-layout checks. It retains the
 same four packed-member warnings in the target's `objpool.h` as the baseline,
 with no new warning messages. SHA-256:
-`1a39a8b99d2f66a5bfeac117ca30a914511fbf308c9e9395eae148b983ad38f9`.
+`7d0296cc9406a4a6974eb6de0028f804157b5055bba41d589d063ca1f1f7a41c`.
 It uses the existing DockChannel API and needs no public header change.
 
 The normal builder does not apply this patch, and the existing module sets
@@ -128,12 +129,34 @@ explanation for the intermittent AFE failure.
 
 ## HID candidate
 
-The latest exact-kernel candidate includes both the GPIO block-boundary and
-HID write-length fixes below. Module SHA-256:
-`891efe20097cbdd779932ebdc8b1400fffc2443eddecf836fe5ceef6e7636990`.
-The normal nine-module build and optional NVMe-pair ten-module build produce
-the same input bytes. The paired build passes all fourteen builder checks;
-other modules and overlays retain their prior hashes.
+The latest exact-kernel candidate includes the firmware staging cleanup,
+GPIO block-boundary and HID write-length fixes below. Module SHA-256:
+`c1c2d9f6bb3bf3e3a0ab35cce02088e25c8e0e1fbf836ac6dd14f90ca61642cb`.
+The combined eleven-module build passes all sixteen builder checks. Ten other
+modules and both USB overlays remain byte-identical to the previous set.
+The build retains its existing 63 target-header and pointer-sign warnings.
+
+Firmware startup now releases its CPU staging copy on success and every
+error exit. Previously `dchid_get_firmware()` retained that allocation until
+device removal, even after `dchid_send_firmware()` had copied the bytes into
+a separate coherent DMA buffer. Repeated failed starts accumulated both
+copies. The new cleanup frees only the staging allocation. It retains every
+coherent buffer, including after a lost command ACK, because firmware may
+still use that address. Startup return values and the retry latch are unchanged.
+
+```sh
+CC=gcc python3 input-driver/test-firmware-lifetime.py
+```
+
+Three ASan/UBSan groups compile the actual lookup, upload and startup
+functions with synthetic firmware. They cover early lookup failures, missing
+firmware, invalid headers, allocation/GPIO/upload/power failures and success.
+Thirty-two failed uploads retain all DMA bytes while releasing every CPU
+copy. The original leak and three lifetime/state mutations fail assertions.
+The same checks pass with the fragmented receiver applied; its source pin
+and hunk offsets were updated without changing receive logic. That optional
+module also passes exact-header compilation and module checks. These results
+do not establish why AFE startup fails or permit DMA-buffer reuse or teardown.
 
 The shared FIFO now has a packet-level transmit mutex. Previously each HID
 interface held only its own command mutex, so another interface could insert

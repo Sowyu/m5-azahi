@@ -561,7 +561,10 @@ M26's unknown narrower hardware field widths or establish safe DMA recovery.
   framing after a partial body timeout. A separate
   [fragmented receive candidate](../../input-driver/README.md#optional-fragmented-receive-candidate)
   preserves partial packets in host tests, without validated hardware reset
-  or resynchronization. Each `start_retry` keeps another firmware buffer.
+  or resynchronization. Each `start_retry` keeps another coherent DMA firmware
+  buffer. The September 29 candidate now releases the separate CPU staging
+  copy on every completed startup attempt; three host groups verify that
+  ownership distinction without releasing the DMA buffers.
 - SPMI4: `hpm-once` holds no power reference between its PMGR check and FIFO
   use. M15 stands.
 - Every changed module needs a rebuild and a new pinned hash in the install

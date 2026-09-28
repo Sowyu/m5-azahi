@@ -262,8 +262,10 @@ stub = r'''
 #define dev_warn(...) ((void)0)
 #define dev_info(...) ((void)0)
 #define dev_err(...) ((void)0)
-struct dchid_iface { bool starting; unsigned gpio_id; };
+struct dockchannel_hid { void *dev; };
+struct dchid_iface { bool starting; unsigned gpio_id; struct dockchannel_hid *dchid; };
 static int result, calls;
+static void devm_kfree(void *dev, const void *p) { (void)dev; assert(!p); }
 static int dchid_get_firmware(struct dchid_iface *i, void **fw, size_t *size) {
     (void)i;
     if (result) return result;
@@ -279,14 +281,15 @@ static int dchid_reset_interface(struct dchid_iface *i, int state) {
 '''
 test = r'''
 int main(void) {
+    struct dockchannel_hid dchid = {0};
     const int errors[] = {-ENOENT, -EINVAL, -ENOMEM, 1};
     for (unsigned n = 0; n < sizeof(errors) / sizeof(*errors); n++) {
-        struct dchid_iface i = {.gpio_id = 1};
+        struct dchid_iface i = {.gpio_id = 1, .dchid = &dchid};
         result = errors[n]; calls = 0;
         assert(dchid_start_interface(&i) == result);
         assert(!calls && !i.starting);
     }
-    struct dchid_iface keyboard = {0};
+    struct dchid_iface keyboard = {.dchid = &dchid};
     result = 0;
     assert(!dchid_start_interface(&keyboard));
     assert(keyboard.starting && !calls);

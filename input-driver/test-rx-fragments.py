@@ -10,7 +10,7 @@ import tempfile
 
 here = Path(__file__).resolve().parent
 base = (here / 'dockchannel-hid.c').read_text()
-if hashlib.sha256(base.encode()).hexdigest() != '8348ec19d7178e4c3a73a39ea6725919f9812189113a798f1bd86748e351d2be':
+if hashlib.sha256(base.encode()).hexdigest() != 'ac8711e9da3c1b4b0d8abee5d72a0e5d81436b3c80ee1137d2b98f2e4fa301c7':
     raise SystemExit('Wrong pinned HID source checksum')
 if not shutil.which('trash-put'):
     raise SystemExit('Install trash-cli: sudo apt-get install -y trash-cli')

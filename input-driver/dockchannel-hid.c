@@ -542,7 +542,7 @@ static int dchid_request_gpio(struct dchid_iface *iface)
 
 static int dchid_start_interface(struct dchid_iface *iface)
 {
-	void *fw;
+	void *fw = NULL;
 	size_t size;
 	int ret;
 
@@ -588,10 +588,14 @@ static int dchid_start_interface(struct dchid_iface *iface)
 			goto err;
 	}
 
-	return 0;
+	ret = 0;
+	goto out;
 
 err:
 	iface->starting = false;
+out:
+	/* The upload owns a separate coherent copy; only this staging copy is done. */
+	devm_kfree(iface->dchid->dev, fw);
 	return ret;
 }
 
