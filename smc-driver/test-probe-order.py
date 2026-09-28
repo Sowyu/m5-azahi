@@ -12,10 +12,16 @@ import tempfile
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--source', required=True, type=Path)
 parser.add_argument('--patch', type=Path, default=Path(__file__).with_name('sram32.patch'))
+parser.add_argument('--init-handshake-header', type=Path,
+                    help='Pinned macsmc.h; also test the optional init-handshake.patch')
 args = parser.parse_args()
 base = args.source.read_bytes()
 if hashlib.sha256(base).hexdigest() != '6a8004c39af84de5757ffac8453b3d9822a3e590ff6ac3bf7b1415f52373af0a':
     parser.error('Wrong pinned macsmc.c checksum')
+header = args.init_handshake_header.read_bytes() if args.init_handshake_header else None
+if header is not None and hashlib.sha256(header).hexdigest() != \
+        '2d9a64e924e1aa5cf5d75db9f1570be3c7178aaf955a22121ff8f15b929eaa54':
+    parser.error('Wrong pinned macsmc.h checksum')
 if not shutil.which('trash-put'):
     parser.error('Install trash-cli: sudo apt-get install -y trash-cli')
 root = Path(tempfile.mkdtemp(prefix='azahi-smc-probe-'))
@@ -41,6 +47,8 @@ typedef uint64_t u64;
 #define FIELD_PREP(m,v) (((u64)(v) << __builtin_ctzll(m)) & (m))
 #define FIELD_GET(m,v) (((u64)(v) & (m)) >> __builtin_ctzll(m))
 #define READ_ONCE(x) (x)
+#define WRITE_ONCE(x,v) ((x)=(v))
+#define cmpxchg(p,old,new) __sync_val_compare_and_swap(p,old,new)
 #define IS_ALIGNED(v,n) (((v) & ((n)-1)) == 0)
 #define GFP_KERNEL 0
 #define IS_ERR(p) ((intptr_t)(p) < 0 && (intptr_t)(p) >= -4095)
@@ -50,7 +58,8 @@ typedef uint64_t u64;
 #define dev_warn(...) ((void)0)
 #define dev_warn_ratelimited(...) ((void)0)
 #define msecs_to_jiffies(v) (v)
-enum { APPLE_SMC_BOOTING, APPLE_SMC_INITIALIZED, APPLE_SMC_ERROR_NO_SHMEM };
+enum apple_smc_boot_stage { APPLE_SMC_BOOTING, APPLE_SMC_INITIALIZED,
+ APPLE_SMC_ERROR_NO_SHMEM, APPLE_SMC_ERROR_CRASHED, APPLE_SMC_PRE_INIT };
 struct completion { bool initialized; unsigned done; };
 struct blocking_notifier_head { bool initialized; unsigned calls; };
 struct device { void *data; };
@@ -97,8 +106,11 @@ static void *devm_platform_get_and_ioremap_resource(struct platform_device *p, u
 static bool of_machine_is_compatible(const char *name) {
  assert(!strcmp(name,"apple,j714s")); return true;
 }
+static void apple_smc_rtkit_crashed(void *, const void *, size_t);
 static int apple_smc_rtkit_shmem_setup(struct apple_smc *s, struct apple_rtkit_shmem *b) {
- assert(b->size==SMC_SHMEM_SIZE); b->iomem=&storage; return 0;
+ assert(b->size==SMC_SHMEM_SIZE); b->iomem=&storage;
+ if (scenario==13 || scenario==14) apple_smc_rtkit_crashed(s,NULL,0);
+ return scenario==14 ? -EIO : 0;
 }
 static void apple_smc_rtkit_shutdown(void *p) { assert(!"must not shut down hardware"); }
 static int devm_add_action_or_reset(struct device *d, void (*action)(void *), void *data) {
@@ -120,10 +132,11 @@ static void *devm_apple_rtkit_init(struct device *d, void *cookie, const char *n
  if (scenario==1 || scenario==2) {
   /* A stale initialization reply, then a command reply and notification. */
   deliver(0x1000);
-  assert(storage.boot_stage==APPLE_SMC_INITIALIZED);
+  assert(storage.boot_stage==(PHASE_GUARD ? APPLE_SMC_PRE_INIT : APPLE_SMC_INITIALIZED));
   deliver(FIELD_PREP(SMC_ID,storage.msg_id));
   deliver(SMC_MSG_NOTIFICATION | FIELD_PREP(SMC_DATA,42));
  }
+ if (scenario==10) apple_smc_rtkit_crashed(&storage,NULL,0);
  return scenario==4 ? (void *)(intptr_t)-ENOMEM : &storage;
 }
 static int apple_rtkit_wake(void *rtk) {
@@ -132,9 +145,16 @@ static int apple_rtkit_wake(void *rtk) {
   deliver(FIELD_PREP(SMC_ID,storage.msg_id));
   deliver(SMC_MSG_NOTIFICATION | FIELD_PREP(SMC_DATA,42));
  }
+ if (scenario==11) apple_smc_rtkit_crashed(&storage,NULL,0);
  return scenario==5 ? -EIO : 0;
 }
 static int apple_rtkit_start_ep(void *rtk, u8 endpoint) {
+ if (scenario==9) {
+  deliver(0x1000);
+  deliver(FIELD_PREP(SMC_ID,storage.msg_id));
+  deliver(SMC_MSG_NOTIFICATION | FIELD_PREP(SMC_DATA,42));
+ }
+ if (scenario==12) apple_smc_rtkit_crashed(&storage,NULL,0);
  assert(endpoint==SMC_ENDPOINT); return scenario==6 ? -EIO : 0;
 }
 static int apple_rtkit_send_message(void *rtk, u8 ep, u64 message, void *done, bool atomic) {
@@ -153,36 +173,48 @@ static unsigned wait_for_completion_timeout(struct completion *c, unsigned ms) {
 '''
 TEST = r'''
 int main(void) {
- for (scenario=0; scenario<=8; scenario++) {
+ for (scenario=0; scenario<=(PHASE_GUARD ? 14 : 8); scenario++) {
   struct platform_device p={0};
   sends=waits=early_messages=notifications=0;
   sram32=scenario&1;
   int ret=apple_smc_probe(&p);
-  int expected=(scenario==2 || scenario==3 || scenario==8) ? -ETIMEDOUT :
+  int expected=(scenario==2 || (!PHASE_GUARD && scenario==3) || scenario==8) ? -ETIMEDOUT :
                scenario==4 ? -ENOMEM :
-               (scenario==5 || scenario==6 || scenario==7) ? -EIO : 123;
+               (scenario==5 || scenario==6 || scenario==7 || scenario>=10) ? -EIO : 123;
   assert(ret==expected);
   if (ret==123) {
    assert(p.dev.data==&storage && storage.boot_stage==APPLE_SMC_INITIALIZED);
    assert(storage.shmem.iova==0x2000 && sends==1 && waits==1);
   }
-  if (scenario==1 || scenario==2 || scenario==3) {
-   assert(notifications==1 && storage.event_handlers.calls==1);
+  if (scenario==1 || scenario==2 || scenario==3 || scenario==9) {
+   assert(notifications==(PHASE_GUARD ? 0 : 1));
+   assert(storage.event_handlers.calls==notifications);
    assert(!storage.cmd_done.done);
   }
   if (scenario>=4 && scenario<=6) assert(!sends && !waits);
   if (scenario==7) assert(sends==1 && !waits);
+  if (scenario>=10) assert(storage.boot_stage==APPLE_SMC_ERROR_CRASHED);
+  if (scenario>=10 && scenario<=12) assert(!sends && !waits);
+  if (ret==123) {
+   unsigned previous=notifications;
+   deliver(SMC_MSG_NOTIFICATION | FIELD_PREP(SMC_DATA,42));
+   deliver(FIELD_PREP(SMC_ID,storage.msg_id));
+   assert(notifications==previous+1 && storage.cmd_done.done==1);
+  }
  }
- puts("PASS: 9 probe paths, early init/command/notification, fresh reply required, error propagation");
+ puts(PHASE_GUARD ? "PASS: 15 probe paths, pre-init replies discarded, wake/endpoint success, crash stays terminal" :
+                   "PASS: 9 probe paths, early init/command/notification, fresh reply required, error propagation");
 }
 '''
 
 def fixture(source):
+    crashed = source[source.index('static void apple_smc_rtkit_crashed('):
+                     source.index('static int apple_smc_rtkit_shmem_setup(')]
     callbacks = source[source.index('static bool apple_smc_rtkit_recv_early('):
                        source.index('static const struct apple_rtkit_ops')]
     probe = source[source.index('static int apple_smc_probe('):
                    source.index('\tret = apple_smc_read_u32(')]
-    return STUB + callbacks + probe + '\treturn 123;\n}\n' + TEST
+    return f'#define PHASE_GUARD {int(header is not None)}\n' + STUB + crashed + callbacks + probe + '\treturn 123;\n}\n' + TEST
 
 def run(name, source, fail=False):
     c = root / (name + '.c')
@@ -206,9 +238,32 @@ try:
     p.write_bytes(base)
     subprocess.run(['patch', '--batch', '--fuzz=0', '-p1', '-d', str(root),
                     '-i', str(args.patch.resolve())], check=True)
+    if header is not None:
+        h = root / 'include/linux/mfd/macsmc.h'
+        h.parent.mkdir(parents=True)
+        h.write_bytes(header)
+        subprocess.run(['patch', '--batch', '--fuzz=0', '-p1', '-d', str(root),
+                        '-i', str(Path(__file__).with_name('init-handshake.patch').resolve())], check=True)
     source = p.read_text()
     run('candidate', source)
     run('original', base.decode(), fail=True)
+    if header is not None:
+        line = '\tsmc->boot_stage = APPLE_SMC_PRE_INIT;\n'
+        assert source.count(line)==1
+        run('unarmed', source.replace(line,'',1), fail=True)
+        line = '\tif (stage == APPLE_SMC_PRE_INIT)\n\t\treturn true;\n'
+        assert source.count(line)==1
+        run('accept-pre-init', source.replace(line,'',1), fail=True)
+        line = '\t\tcmpxchg(&smc->boot_stage, APPLE_SMC_BOOTING,\n\t\t\tret < 0 ? APPLE_SMC_ERROR_NO_SHMEM : APPLE_SMC_INITIALIZED);'
+        assert source.count(line)==1
+        run('revive-after-crash', source.replace(line,
+            '\t\tWRITE_ONCE(smc->boot_stage, ret < 0 ? APPLE_SMC_ERROR_NO_SHMEM : APPLE_SMC_INITIALIZED);',1), fail=True)
+        line = '\tif (cmpxchg(&smc->boot_stage, APPLE_SMC_PRE_INIT, APPLE_SMC_BOOTING) !=\n\t    APPLE_SMC_PRE_INIT)\n\t\treturn dev_err_probe(dev, -EIO, "SMC failed before initialization\\n");'
+        assert source.count(line)==1
+        run('rearm-after-crash', source.replace(line,
+            '\tWRITE_ONCE(smc->boot_stage, APPLE_SMC_BOOTING);',1), fail=True)
+        print('PASS: original failure and four init-phase/crash mutations detected')
+        raise SystemExit(0)
     initial = '\tinit_completion(&smc->{field});\n'
     for field in ('init_done', 'cmd_done'):
         line = initial.format(field=field)

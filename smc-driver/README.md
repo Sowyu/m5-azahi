@@ -102,7 +102,8 @@ touch an uninitialized wait queue or notifier lock. Probe resets completion
 counts before its explicit initialization request, so an earlier completion
 does not satisfy that wait. This fixes object lifetime, not the boot protocol:
 an unsolicited initialization reply during wake can still change the boot
-stage and make the subsequent handshake time out.
+stage and make the subsequent handshake time out. The separate
+[initialization guard](#optional-initialization-guard) addresses that case.
 
 Read, read/write, normal write, key-info and atomic-write paths use the same
 copy helpers. The patch preserves `struct apple_smc` and its exported API.
@@ -117,6 +118,52 @@ can wrap. Filtering a mismatched ID does not resolve those protocol limits.
 RTKit's separate log/crash-buffer copying still uses its generic helper; this
 patch only changes the SMC key buffer. Those other SRAM reads need a separate
 assessment if the width hypothesis is confirmed.
+
+## Optional initialization guard
+
+[init-handshake.patch](init-handshake.patch) applies after `sram32.patch`.
+It keeps the SMC in a new pre-initialization state through RTKit startup,
+wake and endpoint setup. Application-endpoint messages received in that
+state are discarded. Probe clears both completions, then atomically arms
+the explicit initialization request. A crash before arming refuses probe;
+a crash during shared-memory setup cannot be overwritten by a successful
+or failed initialization reply.
+
+This fixes the injected wake-time reply that makes the default candidate
+time out. It does not identify a cause of the laptop's recorded failure.
+A stale message queued before arming but delivered afterward remains
+indistinguishable from a fresh reply. Messages received while waiting for
+initialization still follow the existing address-reply protocol.
+
+The patch also changes `include/linux/mfd/macsmc.h`, pinned to SHA-256
+`2d9a64e924e1aa5cf5d75db9f1570be3c7178aaf955a22121ff8f15b929eaa54`.
+The new enum value follows the existing values, which remain unchanged.
+
+```sh
+CC=gcc python3 smc-driver/test-probe-order.py \
+  --source /path/to/linux/drivers/mfd/macsmc.c \
+  --init-handshake-header /path/to/linux/include/linux/mfd/macsmc.h
+```
+
+Fifteen ASan/UBSan probe paths pass. They inject replies during RTKit
+initialization, wake and endpoint setup, require a fresh explicit reply,
+preserve crashes at five callback boundaries, and check normal command and
+notification delivery after successful initialization. The original failure
+and four phase/crash mutations fail assertions. These are controlled
+interleavings, not real kernel threads or firmware timing. The default
+nine-path probe test still passes with its existing expected timeout.
+
+The optional AArch64 module compiles without warnings against the exact
+target headers and passes strict modpost, import/export, vermagic and
+module-layout checks. Comparing compiled constants verifies the same
+272-byte SMC structure, alignment, eighteen field offsets, enum size and
+four existing enum values. Module SHA-256:
+`ae5cd6f0e99635bae75f1917a5be1f902413031f0b211981592af4724761c169`.
+This is not a complete kernel or Rust-consumer build.
+
+The normal builder does not apply this patch. No module was installed or
+tested on hardware. Keep it separate from `timeout-quarantine.patch`, which
+edits the same enum; their combined behavior has not been validated.
 
 ## Optional command timeout quarantine
 

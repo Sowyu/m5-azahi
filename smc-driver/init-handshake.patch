@@ -1,0 +1,98 @@
+--- a/drivers/mfd/macsmc.c
++++ b/drivers/mfd/macsmc.c
+@@ -364,7 +364,7 @@
+ {
+ 	struct apple_smc *smc = cookie;
+ 
+-	smc->boot_stage = APPLE_SMC_ERROR_CRASHED;
++	WRITE_ONCE(smc->boot_stage, APPLE_SMC_ERROR_CRASHED);
+ 	dev_err(smc->dev, "SMC crashed! Your system will reboot in a few seconds...\n");
+ }
+ 
+@@ -398,13 +398,18 @@
+ static bool apple_smc_rtkit_recv_early(void *cookie, u8 endpoint, u64 message)
+ {
+ 	struct apple_smc *smc = cookie;
++	enum apple_smc_boot_stage stage = READ_ONCE(smc->boot_stage);
+ 
+ 	if (endpoint != SMC_ENDPOINT) {
+ 		dev_warn(smc->dev, "Received message for unknown endpoint 0x%x\n", endpoint);
+ 		return false;
+ 	}
+ 
+-	if (smc->boot_stage == APPLE_SMC_BOOTING) {
++	/* No endpoint response belongs to an initialization we have not armed. */
++	if (stage == APPLE_SMC_PRE_INIT)
++		return true;
++
++	if (stage == APPLE_SMC_BOOTING) {
+ 		int ret;
+ 
+ 		smc->shmem.iova = message;
+@@ -414,12 +419,11 @@
+ 			ret = -EINVAL;
+ 		else
+ 			ret = apple_smc_rtkit_shmem_setup(smc, &smc->shmem);
+-		if (ret < 0) {
+-			smc->boot_stage = APPLE_SMC_ERROR_NO_SHMEM;
++		if (ret < 0)
+ 			dev_err(smc->dev, "Failed to initialize shared memory (%d)\n", ret);
+-		} else {
+-			smc->boot_stage = APPLE_SMC_INITIALIZED;
+-		}
++		/* A firmware crash must remain terminal even if a reply races it. */
++		cmpxchg(&smc->boot_stage, APPLE_SMC_BOOTING,
++			ret < 0 ? APPLE_SMC_ERROR_NO_SHMEM : APPLE_SMC_INITIALIZED);
+ 		complete(&smc->init_done);
+ 	} else if (FIELD_GET(SMC_MSG, message) == SMC_MSG_NOTIFICATION) {
+ 		/* Handle these in the RTKit worker thread */
+@@ -496,6 +500,7 @@
+ 
+ 	mutex_init(&smc->mutex);
+ 	spin_lock_init(&smc->lock);
++	smc->boot_stage = APPLE_SMC_PRE_INIT;
+ 	/* RTKit enables receive callbacks during initialization. */
+ 	init_completion(&smc->init_done);
+ 	init_completion(&smc->cmd_done);
+@@ -509,7 +514,6 @@
+ 	if (IS_ERR(smc->rtk))
+ 		return dev_err_probe(dev, PTR_ERR(smc->rtk), "Failed to initialize RTKit");
+ 
+-	smc->boot_stage = APPLE_SMC_BOOTING;
+ 	ret = apple_rtkit_wake(smc->rtk);
+ 	if (ret)
+ 		return dev_err_probe(dev, ret, "Failed to wake up SMC");
+@@ -525,6 +529,10 @@
+ 	/* Discard completion state from before this explicit initialization. */
+ 	reinit_completion(&smc->init_done);
+ 	reinit_completion(&smc->cmd_done);
++
++	if (cmpxchg(&smc->boot_stage, APPLE_SMC_PRE_INIT, APPLE_SMC_BOOTING) !=
++	    APPLE_SMC_PRE_INIT)
++		return dev_err_probe(dev, -EIO, "SMC failed before initialization\n");
+ 
+ 	ret = apple_rtkit_send_message(smc->rtk, SMC_ENDPOINT,
+ 				       FIELD_PREP(SMC_MSG, SMC_MSG_INITIALIZE), NULL, false);
+--- a/include/linux/mfd/macsmc.h
++++ b/include/linux/mfd/macsmc.h
+@@ -68,16 +68,18 @@
+ 
+ /**
+  * enum apple_smc_boot_stage - SMC boot stage
+- * @APPLE_SMC_BOOTING: SMC is booting
++ * @APPLE_SMC_BOOTING: SMC initialization request is armed
+  * @APPLE_SMC_INITIALIZED: SMC is initialized and ready to use
+  * @APPLE_SMC_ERROR_NO_SHMEM: Shared memory could not be initialized during boot
+  * @APPLE_SMC_ERROR_CRASHED: SMC has crashed
++ * @APPLE_SMC_PRE_INIT: RTKit startup, before arming the initialization request
+  */
+ enum apple_smc_boot_stage {
+ 	APPLE_SMC_BOOTING,
+ 	APPLE_SMC_INITIALIZED,
+ 	APPLE_SMC_ERROR_NO_SHMEM,
+-	APPLE_SMC_ERROR_CRASHED
++	APPLE_SMC_ERROR_CRASHED,
++	APPLE_SMC_PRE_INIT
+ };
+ 
+ /**

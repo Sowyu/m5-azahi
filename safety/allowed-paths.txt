@@ -443,6 +443,7 @@ smc-driver/sram32.patch
 smc-driver/test-sram32.py
 smc-driver/test-probe-order.py
 smc-driver/README.md
+smc-driver/init-handshake.patch
 standalone-loader/pmgr-lookup.patch
 standalone-loader/test-pmgr-lookup.py
 standalone-loader/check-full-link.py
