@@ -528,8 +528,11 @@ M26's unknown narrower hardware field widths or establish safe DMA recovery.
   (inherited from upstream). A root `nvme reset` or sysfs `reset_controller`
   removes the root disk through the same refusal.
 - DockChannel: `BUG_ON(1)` is still reachable through MTP helper or parent
-  unbind. A failed header read still does not re-arm the receiver (upstream
-  design). Each `start_retry` keeps another firmware buffer.
+  unbind. The default receiver still stops after a header failure and loses
+  framing after a partial body timeout. A separate
+  [fragmented receive candidate](../../input-driver/README.md#optional-fragmented-receive-candidate)
+  preserves partial packets in host tests, without validated hardware reset
+  or resynchronization. Each `start_retry` keeps another firmware buffer.
 - SPMI4: `hpm-once` holds no power reference between its PMGR check and FIFO
   use. M15 stands.
 - Every changed module needs a rebuild and a new pinned hash in the install

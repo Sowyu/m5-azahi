@@ -30,6 +30,8 @@ input-driver/build-module.sh
 input-driver/dockchannel-hid.c
 input-driver/dockchannel-timeout.patch
 input-driver/test-dockchannel-timeout.py
+input-driver/rx-fragments.patch
+input-driver/test-rx-fragments.py
 input-driver/test-power-request.py
 nvme-driver/README.md
 nvme-driver/apple.c

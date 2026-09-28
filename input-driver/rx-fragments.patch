@@ -1,0 +1,82 @@
+--- a/input-driver/dockchannel-hid.c
++++ b/input-driver/dockchannel-hid.c
+@@ -213,6 +213,9 @@
+ 	struct dchid_iface *ifaces[MAX_INTERFACES];
+ 
+ 	u8 pkt_buf[MAX_PKT_SIZE];
++	/* Only the RX IRQ thread owns this partially received packet. */
++	struct dchid_hdr rx_hdr;
++	size_t rx_count;
+ 
+ 	/* Workqueue to asynchronously create HID devices */
+ 	struct workqueue_struct *new_iface_wq;
+@@ -1135,22 +1138,39 @@
+ 	struct dchid_hdr hdr;
+ 	struct dchid_work *work;
+ 	struct dchid_iface *iface;
++	size_t count, received, remaining;
+ 	u32 checksum;
+ 
+-	if (dockchannel_recv(dchid->dc, &hdr, sizeof(hdr)) != sizeof(hdr)) {
+-		dev_err(dchid->dev, "Read failed (header)\n");
+-		return;
+-	}
+-
++	/* Read only the bytes counted by the IRQ thread's FIFO snapshot. */
++	if (dchid->rx_count < sizeof(hdr)) {
++		count = min(avail, sizeof(hdr) - dchid->rx_count);
++		if (dockchannel_recv(dchid->dc, (u8 *)&dchid->rx_hdr + dchid->rx_count,
++				     count) != count)
++			goto read_failed;
++		dchid->rx_count += count;
++		avail -= count;
++		if (dchid->rx_count < sizeof(hdr)) {
++			remaining = sizeof(hdr) - dchid->rx_count;
++			goto await;
++		}
++	}
++
++	hdr = dchid->rx_hdr;
+ 	if (hdr.hdr_len != sizeof(hdr)) {
+-		dev_err(dchid->dev, "Bad header length %d\n", hdr.hdr_len);
+-		goto done;
+-	}
+-
+-	if (dockchannel_recv(dchid->dc, dchid->pkt_buf, hdr.length + 4) != (hdr.length + 4)) {
+-		dev_err(dchid->dev, "Read failed (body)\n");
+-		goto done;
+-	}
++		/* No framing marker or validated reset can recover this stream. */
++		dev_err(dchid->dev, "Bad header length %d; receive stopped\n", hdr.hdr_len);
++		return;
++	}
++
++	received = dchid->rx_count - sizeof(hdr);
++	remaining = hdr.length + 4 - received;
++	count = min(avail, remaining);
++	if (dockchannel_recv(dchid->dc, dchid->pkt_buf + received, count) != count)
++		goto read_failed;
++	dchid->rx_count += count;
++	remaining -= count;
++	if (remaining)
++		goto await;
+ 
+ 	checksum = dchid_checksum(&hdr, sizeof(hdr));
+ 	checksum += dchid_checksum(dchid->pkt_buf, hdr.length + 4);
+@@ -1202,7 +1222,15 @@
+ 	queue_work(iface->wq, &work->work);
+ 
+ done:
+-	dockchannel_await(dchid->dc, dchid_handle_packet, dchid, sizeof(struct dchid_hdr));
++	dchid->rx_count = 0;
++	remaining = sizeof(struct dchid_hdr);
++await:
++	dockchannel_await(dchid->dc, dchid_handle_packet, dchid, remaining);
++	return;
++
++read_failed:
++	/* The transport error does not report how many bytes it consumed. */
++	dev_err(dchid->dev, "Read failed; packet position unknown, receive stopped\n");
+ }
+ 
+ static int dockchannel_hid_probe(struct platform_device *pdev)

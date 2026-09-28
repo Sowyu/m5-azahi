@@ -69,9 +69,62 @@ driver's `BUG_ON(1)`. Any future test needs a separate boot candidate and
 keyboard-independent rollback.
 
 This is a concrete timeout-path bug, not an established explanation for the
-intermittent AFE startup failure. Partial packet framing and the HID header
-failure path's missing rearm remain unresolved. Successful IRQ reuse in a
-host test does not establish safe protocol recovery after a partial packet.
+intermittent AFE startup failure. The default HID receiver still loses packet
+position after a partial body timeout and does not rearm after a header
+failure. Successful IRQ reuse does not recover that position. The separate
+candidate below preserves fragments before such a timeout occurs.
+
+## Optional fragmented receive candidate
+
+[rx-fragments.patch](rx-fragments.patch) changes this repository's HID
+receiver. The old callback requests the entire body even when only its header
+has arrived. If the one-second FIFO wait times out after consuming part of
+the body, its error return does not say how many bytes were consumed. The
+next callback treats remaining body bytes as a new header. Changing the
+header-error return to rearm would have the same framing problem.
+
+The candidate reads at most the IRQ callback's available-byte count and
+retains the partial header/body until a later callback. It arms the existing
+FIFO threshold for the remaining bytes, then checks and dispatches only a
+complete packet. Complete bad-checksum, short-subheader, unknown-interface
+and allocation-failure packets still leave the next boundary usable.
+All functions outside the receiver remain byte identical.
+
+An invalid header length or unexpected transport error stops reception with
+an explicit log. The protocol has no established resynchronization method.
+The candidate cannot recover lost bytes, a FIFO reset or a firmware restart.
+It assumes the FIFO count is accurate and this driver is the only reader;
+it has not verified those assumptions during hardware reset. A stalled
+partial packet remains pending. TX timeout behavior and teardown are unchanged.
+
+Base HID source SHA-256:
+`8348ec19d7178e4c3a73a39ea6725919f9812189113a798f1bd86748e351d2be`.
+The test pins this source and applies the patch in a temporary copy:
+
+```sh
+CC=gcc python3 input-driver/test-rx-fragments.py
+```
+
+Four ASan/UBSan groups cover all 77 byte splits of a sample packet across
+three channels, 50 payload/chunk schedules through 65,532-byte payloads,
+100 consecutive packets across fifteen interfaces, complete packet drops
+and transport errors. The original request beyond available bytes and five
+state mutations fail assertions. The fixture models byte availability and
+callbacks; it does not run the FIFO driver, an IRQ controller or firmware.
+
+The optional `dockchannel-hid.ko` passes exact-header AArch64 compilation,
+strict modpost, imports, vermagic and module-layout checks. It retains the
+same four packed-member warnings in the target's `objpool.h` as the baseline,
+with no new warning messages. SHA-256:
+`1a39a8b99d2f66a5bfeac117ca30a914511fbf308c9e9395eae148b983ad38f9`.
+It uses the existing DockChannel API and needs no public header change.
+
+The normal builder does not apply this patch, and the existing module sets
+remain unchanged. To prepare a separate build, apply it with
+`patch --batch --fuzz=0 -p1 < input-driver/rx-fragments.patch` in a separate
+repository copy, then use the existing Linux builder with `--with-input`.
+No module was installed or tested on the laptop. This is not an established
+explanation for the intermittent AFE failure.
 
 ## HID candidate
 
