@@ -155,6 +155,23 @@ enable the older-chip
 frequency/voltage sequence or copy the entire macOS restore routine into the
 loader. No MMIO probe or write was added. The one-core guard remains.
 
+The counter paths were checked separately. `_enablePerfCountersACC` dispatches
+through slot `+0xeb8` to the T6050 vtable's `enableCPUPerfCounters` at
+`0xfffffe0009cc6644`, which returns immediately. The energy enable method at
+`0xfffffe0009cc2d18`, slot `+0xf00`, also returns immediately. This does not
+make counter restoration a no-op: the base restore routines still call real
+counter setters.
+
+`setCPUPerfCounter` at `0xfffffe0009cc2834` forms its logical write offsets
+from four bounded linear expressions or two three-by-twelve tables at
+`0xfffffe0007715840` and `0xfffffe00077158d0`. Enumerating a superset of the
+linear bounds and all 72 table entries gives 112 distinct offsets, none
+equal to `0xe440f8`. The CPM energy and SRAM-energy setters instead write
+`0xe48000` and `0xe48008` through `writeACCReg`; per-core energy restoration
+uses separate setters and mappings. These traces do not identify the final
+`0xe440f8` write as a counter enable, a reset control or a required startup
+step. They leave its purpose and prerequisites unresolved.
+
 The separately packaged Stage1 tables were checked too. Within each of
 25G72 and 26A428, `iBootDataStage1` and `iBootData` decompress to identical
 payloads despite different IM4P wrappers. Both newer wrappers match their
