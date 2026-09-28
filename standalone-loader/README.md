@@ -105,3 +105,46 @@ the T6050 NVMe refusal remains before the legacy controller initialization.
 These are build/integration results. The upstream base differs from the
 original private loader, the exact v7 payload is absent, and no image has
 been loaded or booted on the laptop.
+
+## Optional SMP shared-state backport
+
+`--smp-refactor` applies [smp-shared-state.patch](smp-shared-state.patch) to
+the assembled loader before the complete build. It backports the seven
+upstream commits from [`2cb5f76b56d0`](https://github.com/AsahiLinux/m1n1/commit/2cb5f76b56d07ac2e035cd5a5d3efffeacc380a0)
+through [`c42cf43d0388`](https://github.com/AsahiLinux/m1n1/commit/c42cf43d03887208e70ec5dcc4da0b2af3699c54).
+Both linker scripts, reset assembly, memory mappings, initialization and
+stack reservations change together. The builder checks eight input hashes
+and the new header's absence before applying the patch without fuzz.
+
+Shared CPU state occupies a separate 64 KiB interval, mapped as
+Device-nGnRnE through all four RAM aliases. Secondary stacks move into BSS;
+MPIDR selects a returning CPU's stack and bookkeeping entry. ADT topology is
+cached once, with complete property lengths and a byte-sized fallback-array
+bounds check. The T6050 six-core masks, locked-vector refusal, permanent
+timeout quarantine and one-core guard remain. `azahi.smp=start` still refuses
+startup. This option does not enable additional CPUs.
+
+```sh
+python3 standalone-loader/check-full-link.py \
+  --m1n1 /path/to/m1n1 --cc /path/to/aarch64-linux-gcc \
+  --output /path/to/new-smp-link-check --smp-refactor
+python3 smp/test-smp-shared-state.py --source /path/to/new-smp-link-check/source
+```
+
+Both optional ELF variants linked on 2026-09-29, with no undefined symbols
+or C/link warnings. The existing two Rust warnings remain. Four host test
+groups pass with ASan/UBSan for the actual C paths. They cover all 17
+secondary start/stop masks, refusal paths, EL3 stack selection, a late arrival
+during quarantine, stale-target re-entry, 33 fallback-array lengths, shared
+mapping attributes, and source/layout checks. Seven deliberately broken
+variants fail these checks. The original eight SMP tests still pass.
+
+The linker checks place all 1,835,008 bytes of static secondary stacks inside
+the reserved loader extent. The raw entry remains `0x800`; its payload offset
+grows to `0x310000`. Saved disassembly confirms the bounded 24-entry MPIDR
+lookup and EL3 fallback, but that assembly has not run on the laptop. A build
+without the option retains byte-identical allocated ELF sections compared
+with the previous complete build. Debug and symbol metadata differ.
+
+This is an optional integration candidate. It has no payload or installer,
+and does not explain the historical failure to enter the reset vector.

@@ -88,6 +88,12 @@ a pinned upstream tree. Both complete ELF files link without undefined
 symbols. That result does not supply the private payload or establish CPU
 startup on hardware.
 
+The [optional shared-state backport](../standalone-loader/README.md#optional-smp-shared-state-backport)
+now integrates the seven upstream SMP commits into that complete build.
+It preserves the T6050 guards while adding static stacks, shared-memory
+mappings and MPIDR-based re-entry. Four host groups and both ELF links pass;
+secondary startup remains disabled and hardware validation is still absent.
+
 [The investigation](../docs/audit-2026-09-25/smp.md) records the remaining reset
 question and the iBoot/SPTM findings. Hardware validation still requires
 observing each core enter the loader, then all 18 CPUs executing Linux work.

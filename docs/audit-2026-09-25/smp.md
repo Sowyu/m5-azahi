@@ -40,9 +40,12 @@ The series also moves stacks into static storage and caches ADT topology.
 
 The changes involve both linker scripts, `memory.c`, `start.S`, `smp.c`,
 headers and boot initialization. Copying the new `smp.c` into the incomplete
-private snapshot is insufficient. They need review together when rebuilding
-the complete loader. The local guard patch still targets the archived
-2026-09-11 source, not this refactor.
+private snapshot is insufficient. The local guard patch still targets the
+archived 2026-09-11 source. On September 29, a separate optional
+[complete-loader backport](../../standalone-loader/README.md#optional-smp-shared-state-backport)
+integrated all seven commits with those guards preserved. Both ELF variants
+link, and four host test groups pass. This validates the integration offline,
+not secondary execution or physical cache behavior.
 
 At `c42cf43d0388`, upstream still uses the four-core CPU_START stride and the
 older RVBAR mask. Keep the local T6050 corrections and timeout quarantine

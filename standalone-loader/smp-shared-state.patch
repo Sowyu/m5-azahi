@@ -1,0 +1,777 @@
+# Optional backport of AsahiLinux/m1n1 SMP changes, adapted to the guarded loader.
+# Upstream sources are MIT licensed. Selected commits, in order:
+# 2cb5f76b56d07ac2e035cd5a5d3efffeacc380a0
+# e327b97f4ab9c8da27a1fac703dcc14fd0562653
+# 7ec85ae4242af6eba41180f6194b88ccb9ff2a5d
+# 1b469fcb618f1bb125b8566c28ec8cd2fc0cba9c
+# d16a2f4e3c4d2753c38ef1bb3f756add5822ee15
+# bcc76b22f12231d2033960b463e12892ac567ca8
+# c42cf43d03887208e70ec5dcc4da0b2af3699c54
+# Local six-core masks, RVBAR refusal, timeout quarantine and one-core guard remain.
+# Cached ADT reads additionally require complete property/array lengths.
+--- a/m1n1-raw.ld
++++ b/m1n1-raw.ld
+@@ -18,19 +18,19 @@
+     _base = .;
+ 
+     _text_start = .;
+-    .init : ALIGN(0x4000) {
++    .init : ALIGN(0x10000) {
+         *(.init)
+         *(.init.*)
+     } :text
+-    .text : ALIGN(0x4000) {
++    .text : ALIGN(0x10000) {
+         *(.text)
+         *(.text.*)
+         . = ALIGN(8);
+         *(.got.plt)
+-        . = ALIGN(0x4000);
++        . = ALIGN(0x10000);
+     } :text
+     _text_size = . - _text_start;
+-    .rodata : ALIGN(0x4000) {
++    .rodata : ALIGN(0x10000) {
+         *(.rodata)
+         *(.rodata.*)
+         . = ALIGN(8);
+@@ -50,21 +50,25 @@
+         *(.rela.rodata*)
+         *(.rela.dyn)
+         _rela_end = .;
+-        . = ALIGN(0x4000);
++        . = ALIGN(0x10000);
+     } :rodata
+     _rodata_end = .;
+     _data_start = .;
+-    .data : ALIGN(0x4000) {
++    .data : ALIGN(0x10000) {
++        _smp_shared_start = .;
++        *(.data.smp_shared)
++        . = ALIGN(0x10000);
++        _smp_shared_end = .;
+         *(.data)
+         *(.data.*)
+         . = ALIGN(8);
+         _got_start = .;
+         *(.got)
+         _got_end = .;
+-        . = ALIGN(0x4000);
++        . = ALIGN(0x10000);
+         _file_end = .;
+     } :data
+-    .bss : ALIGN(0x4000) {
++    .bss : ALIGN(0x10000) {
+         _bss_start = .;
+         *(.bss)
+         *(.bss.*)
+@@ -72,19 +76,19 @@
+         *(COMMON)
+         _bss_end = .;
+     } : data
+-    .stack_el3 : ALIGN(0x4000) {
++    .stack_el3 : ALIGN(0x10000) {
+         PROVIDE(_stack_top_el3 = .);
+         . += _stack_size_el3 - 8;
+         QUAD(0x5176694b43415453);
+         PROVIDE(_stack_bot_el3 = .);
+     }
+-    .stack : ALIGN(0x4000) {
++    .stack : ALIGN(0x10000) {
+         PROVIDE(_stack_top = .);
+         . += _stack_size - 8;
+         QUAD(0x544f424b43415453);
+         PROVIDE(_stack_bot = .);
+     } :data
+-    ASSERT(ALIGN(0x4000) == ., "Stack size is not aligned!")
++    ASSERT(ALIGN(0x10000) == ., "Stack size is not aligned!")
+     _data_size = . - _data_start;
+     _end = .;
+     _payload_start = .;
+--- a/m1n1.ld
++++ b/m1n1.ld
+@@ -119,23 +119,23 @@
+ 
+         _cmd_end = .;
+ 
+-        . = ALIGN(0x4000);
++        . = ALIGN(0x10000);
+         _hdr_end = .;
+     } :hdr
+     _text_start = .;
+-    .init : ALIGN(0x4000) {
++    .init : ALIGN(0x10000) {
+         *(.init)
+         *(.init.*)
+     } :text
+-    .text : ALIGN(0x4000) {
++    .text : ALIGN(0x10000) {
+         *(.text)
+         *(.text.*)
+         . = ALIGN(8);
+         *(.got.plt)
+-        . = ALIGN(0x4000);
++        . = ALIGN(0x10000);
+     } :text
+     _text_size = . - _text_start;
+-    .rodata : ALIGN(0x4000) {
++    .rodata : ALIGN(0x10000) {
+         *(.rodata)
+         *(.rodata.*)
+         . = ALIGN(8);
+@@ -155,36 +155,40 @@
+         *(.rela.rodata*)
+         *(.rela.dyn)
+         _rela_end = .;
+-        . = ALIGN(0x4000);
++        . = ALIGN(0x10000);
+     } :rodata
+     _rodata_end = .;
+     _data_start = .;
+-    .data : ALIGN(0x4000) {
++    .data : ALIGN(0x10000) {
++        _smp_shared_start = .;
++        *(.data.smp_shared)
++        . = ALIGN(0x10000);
++        _smp_shared_end = .;
+         *(.data)
+         *(.data.*)
+         . = ALIGN(8);
+         _got_start = .;
+         *(.got)
+         _got_end = .;
+-        . = ALIGN(0x4000);
++        . = ALIGN(0x10000);
+         _file_end = .;
+     } :data
+-    .bss : ALIGN(0x4000) {
++    .bss : ALIGN(0x10000) {
+         _bss_start = .;
+         *(.bss)
+         *(.bss.*)
+         *(.dynbss)
+         *(COMMON)
+-        . = ALIGN(0x4000);
++        . = ALIGN(0x10000);
+         _bss_end = .;
+         PROVIDE(_stack_top_el3 = .);
+         . += _stack_size_el3;
+         PROVIDE(_stack_bot_el3 = .);
+-        . = ALIGN(0x4000);
++        . = ALIGN(0x10000);
+         PROVIDE(_stack_top = .);
+         . += _stack_size;
+         PROVIDE(_stack_bot = .);
+-        . = ALIGN(0x4000);
++        . = ALIGN(0x10000);
+     } :data
+     _data_size = . - _data_start;
+     _end = .;
+--- a/src/kboot.c
++++ b/src/kboot.c
+@@ -651,14 +651,6 @@
+             cpu++;
+             node = next;
+             continue;
+-        } else {
+-            printf("FDT: Reserving stack for CPU %d 0x%lx\n", cpu, (uint64_t)secondary_stacks[cpu]);
+-            fdt_add_mem_rsv(dt, (uint64_t)secondary_stacks[cpu], SECONDARY_STACK_SIZE);
+-            if (has_el3()) {
+-                printf("FDT: Reserving EL3 stack for CPU %d 0x%lx\n", cpu,
+-                       (uint64_t)secondary_stacks_el3[cpu]);
+-                fdt_add_mem_rsv(dt, (uint64_t)secondary_stacks_el3[cpu], SECONDARY_STACK_SIZE);
+-            }
+         }
+ 
+         u64 mpidr = smp_get_mpidr(cpu);
+--- a/src/main.c
++++ b/src/main.c
+@@ -169,6 +169,7 @@
+     mcc_init();
+     mmu_init();
+     aic_init();
++    smp_init();
+ #endif
+     wdt_disable();
+ #ifndef BRINGUP
+--- a/src/memory.c
++++ b/src/memory.c
+@@ -459,6 +459,23 @@
+     mmu_add_mapping(addr, addr, size, MAIR_IDX_NORMAL_NC, PERM_RW_EL0);
+ }
+ 
++static void mmu_remap_smp_shared(void)
++{
++    extern u8 _smp_shared_start[], _smp_shared_end[];
++    u64 base = (u64)_smp_shared_start;
++    u64 size = _smp_shared_end - _smp_shared_start;
++
++    /*
++     * Make sure there is absolutely no mapping anywhere that tries to access this area
++     * through caches to prevent mismatched views of memory between cores that run with
++     * MMU off vs. on.
++     */
++    mmu_add_mapping(base, base, size, MAIR_IDX_DEVICE_nGnRnE, PERM_RW);
++    mmu_add_mapping(base | REGION_RWX_EL0, base, size, MAIR_IDX_DEVICE_nGnRnE, PERM_RW_EL0);
++    mmu_add_mapping(base | REGION_RW_EL0, base, size, MAIR_IDX_DEVICE_nGnRnE, PERM_RW_EL0);
++    mmu_add_mapping(base | REGION_RX_EL1, base, size, MAIR_IDX_DEVICE_nGnRnE, PERM_RW_EL0);
++}
++
+ static void mmu_add_default_mappings(void)
+ {
+     ram_base = ALIGN_DOWN(cur_boot_args.phys_base, BIT(32));
+@@ -522,6 +539,7 @@
+      * Handle pmap-ranges
+      */
+     mmu_remap_ranges();
++    mmu_remap_smp_shared();
+ }
+ 
+ static void mmu_configure(void)
+--- a/src/smp.c
++++ b/src/smp.c
+@@ -5,7 +5,6 @@
+ #include "aic.h"
+ #include "aic_regs.h"
+ #include "cpu_regs.h"
+-#include "malloc.h"
+ #include "memory.h"
+ #include "pmgr.h"
+ #include "soc.h"
+@@ -23,6 +22,8 @@
+ #define CPU_REG_CORE    GENMASK(7, 0)
+ #define CPU_REG_CLUSTER GENMASK(10, 8)
+ #define CPU_REG_DIE     GENMASK(14, 11)
++
++#define SMP_SHARED __attribute__((section(".data.smp_shared")))
+ 
+ #define RVBAR_LOCK BIT(0)
+ #define RVBAR_ADDR GENMASK(47, 12)
+@@ -35,43 +36,80 @@
+     u64 retval;
+ };
+ 
+-void *_reset_stack;
+-void *_reset_stack_el1;
++void *_reset_stack SMP_SHARED;
++void *_reset_stack_el1 SMP_SHARED;
+ 
+ #define DUMMY_STACK_SIZE 0x1000
+ u8 dummy_stack[DUMMY_STACK_SIZE];     // Highest EL
+ u8 dummy_stack_el1[DUMMY_STACK_SIZE]; // EL1 stack if EL3 exists
+ 
+-u8 *secondary_stacks[MAX_CPUS] = {dummy_stack};
+-u8 *secondary_stacks_el3[MAX_EL3_CPUS];
+-
+-static bool wfe_mode = false;
+-
+-static int target_cpu;
++u8 secondary_stacks[MAX_CPUS][SECONDARY_STACK_SIZE] ALIGNED(0x4000);
++u8 secondary_stacks_el3[MAX_EL3_CPUS][SECONDARY_STACK_SIZE] ALIGNED(0x4000);
++
++static bool wfe_mode SMP_SHARED = false;
++
++static int target_cpu SMP_SHARED;
+ static int cpu_nodes[MAX_CPUS];
+-static struct spin_table spin_table[MAX_CPUS];
+-static u64 pmgr_reg;
+-static u64 cpu_start_off;
++static struct spin_table spin_table[MAX_CPUS] SMP_SHARED;
++
++struct cpu_info {
++    bool valid;
++    u8 die;
++    u8 cluster;
++    u8 core;
++    u64 impl_reg;
++};
++
++static bool smp_initialized = false;
++static u64 cpu_start_base;
++static struct cpu_info cpu_info[MAX_CPUS];
++
++// Used from start.S to find the correct stack after the first entry
++struct smp_reset_stack {
++    u64 mpidr;
++    u64 stack;
++};
++
++struct smp_reset_stack smp_reset_stacks[MAX_CPUS] SMP_SHARED = {
++    [0 ... MAX_CPUS - 1] = {.mpidr = ~0ULL, .stack = 0},
++};
+ 
+ extern u8 _vectors_start[0];
+-int boot_cpu_idx = -1;
+-u64 boot_cpu_mpidr = 0;
++extern u8 _stack_bot[0];
++int boot_cpu_idx SMP_SHARED = -1;
++u64 boot_cpu_mpidr SMP_SHARED = 0;
+ 
+ void smp_secondary_entry(void)
+ {
+-    struct spin_table *me = &spin_table[target_cpu];
++    u64 mpidr = mrs(MPIDR_EL1) & 0xFFFFFF;
++    int index = target_cpu;
++
++    // target_cpu identifies us during the initial start handshake, but may
++    // be stale on an RVBAR re-entry after deep wfi
++    for (int i = 0; i < MAX_CPUS; i++) {
++        if (smp_reset_stacks[i].mpidr == mpidr) {
++            index = i;
++            break;
++        }
++    }
++
++    smp_reset_stacks[index].stack = (u64)secondary_stacks[index] + SECONDARY_STACK_SIZE;
++    smp_reset_stacks[index].mpidr = mpidr;
++    sysop("dsb sy");
++
++    struct spin_table *me = &spin_table[index];
+ 
+     if (in_el2())
+-        msr(TPIDR_EL2, target_cpu);
++        msr(TPIDR_EL2, index);
+     else
+-        msr(TPIDR_EL1, target_cpu);
+-
+-    printf("  Index: %d (table: %p)\n\n", target_cpu, me);
+-
+-    me->mpidr = mrs(MPIDR_EL1) & 0xFFFFFF;
++        msr(TPIDR_EL1, index);
++
++    printf("  Index: %d (table: %p)\n\n", index, me);
++
++    me->mpidr = mpidr;
+ 
+     sysop("dmb sy");
+-    me->flag = 1;
++    me->flag++;
+     sysop("dmb sy");
+     u64 target;
+     if (!cpu_features->fast_ipi)
+@@ -145,7 +183,7 @@
+         sysop("wfe");
+ }
+ 
+-static void smp_start_cpu(int index, int die, int cluster, int core, u64 impl, u64 cpu_start_base)
++static void smp_start_cpu(int index, const struct cpu_info *cpu)
+ {
+     int i;
+ 
+@@ -158,14 +196,14 @@
+     if (spin_table[index].flag)
+         return;
+ 
+-    u32 core_mask = smp_core_mask(cluster, core);
+-    if (!core_mask || (chip_id == T6050 && (die != 0 || index != 6 * cluster + core)))
++    u32 core_mask = smp_core_mask(cpu->cluster, cpu->core);
++    if (!core_mask || (chip_id == T6050 && (cpu->die != 0 || index != 6 * cpu->cluster + cpu->core)))
+         return;
+ 
+     /* T6050 iBoot writes address bits 41:11. Bit 11 selects a distinct entry. */
+     u64 rvbar_mask = chip_id == T6050 ? GENMASK(41, 11) : RVBAR_ADDR;
+     if (!cpu_features->apple_sysregs_unlocked) {
+-        u64 rvbar = read64(impl) & rvbar_mask;
++        u64 rvbar = read64(cpu->impl_reg) & rvbar_mask;
+         if (rvbar != (u64)_vectors_start) {
+             printf("Failed! \n    RVBAR (=0x%lx) is locked and differs from entry point (=0x%lx)\n",
+                    rvbar, (u64)_vectors_start);
+@@ -173,43 +211,31 @@
+         }
+     }
+ 
+-    printf("Starting CPU %d (%d:%d:%d)... ", index, die, cluster, core);
+-
+-    u8 *stack = memalign(0x4000, SECONDARY_STACK_SIZE);
+-    if (!stack) {
+-        printf("Failed to allocate secondary stack\n");
+-        return;
+-    }
++    printf("Starting CPU %d (%d:%d:%d)... ", index, cpu->die, cpu->cluster, cpu->core);
+ 
+     memset(&spin_table[index], 0, sizeof(struct spin_table));
+     target_cpu = index;
+-    secondary_stacks[index] = stack;
+     if (has_el3()) {
+-        secondary_stacks_el3[index] = memalign(0x4000, SECONDARY_STACK_SIZE);
+         _reset_stack = secondary_stacks_el3[index] + SECONDARY_STACK_SIZE; // EL3
+         _reset_stack_el1 = secondary_stacks[index] + SECONDARY_STACK_SIZE; // EL1
+-
+-        dc_civac_range(&_reset_stack_el1, sizeof(void *));
+     } else
+         _reset_stack = secondary_stacks[index] + SECONDARY_STACK_SIZE;
+ 
+-    dc_civac_range(&_reset_stack, sizeof(void *));
+-
+     sysop("dsb sy");
+ 
+     if (cpu_features->apple_sysregs_unlocked) {
+         // This also clears RVBAR_LOCK, so that HV can set RVBAR later when the core is running
+-        write64(impl, (u64)_vectors_start);
+-    }
+-
+-    cpu_start_base += die * PMGR_DIE_OFFSET;
++        write64(cpu->impl_reg, (u64)_vectors_start);
++    }
++
++    u64 start_base = cpu_start_base + cpu->die * PMGR_DIE_OFFSET;
+ 
+     // Some kind of system level startup/status bit
+     // Without this, IRQs don't work
+-    write32(cpu_start_base + 0x4, core_mask);
++    write32(start_base + 0x4, core_mask);
+ 
+     // Actually start the core
+-    write32(cpu_start_base + 0x8 + 4 * cluster, 1 << core);
++    write32(start_base + 0x8 + 4 * cpu->cluster, 1 << cpu->core);
+ 
+     for (i = 0; i < 100; i++) {
+         sysop("dmb ld");
+@@ -230,8 +256,7 @@
+     _reset_stack_el1 = dummy_stack_el1 + DUMMY_STACK_SIZE;
+ }
+ 
+-static void smp_stop_cpu(int index, int die, int cluster, int core, u64 impl, u64 cpu_start_base,
+-                         bool deep_sleep)
++static void smp_stop_cpu(int index, const struct cpu_info *cpu, bool deep_sleep)
+ {
+     int i;
+ 
+@@ -241,16 +266,16 @@
+     if (!spin_table[index].flag)
+         return;
+ 
+-    u32 core_mask = smp_core_mask(cluster, core);
+-    if (!core_mask || (chip_id == T6050 && (die != 0 || index != 6 * cluster + core)))
+-        return;
+-
+-    printf("Stopping CPU %d (%d:%d:%d)... ", index, die, cluster, core);
+-
+-    cpu_start_base += die * PMGR_DIE_OFFSET;
++    u32 core_mask = smp_core_mask(cpu->cluster, cpu->core);
++    if (!core_mask || (chip_id == T6050 && (cpu->die != 0 || index != 6 * cpu->cluster + cpu->core)))
++        return;
++
++    printf("Stopping CPU %d (%d:%d:%d)... ", index, cpu->die, cpu->cluster, cpu->core);
++
++    u64 start_base = cpu_start_base + cpu->die * PMGR_DIE_OFFSET;
+ 
+     // Request CPU stop
+-    write32(cpu_start_base + 0x0, core_mask);
++    write32(start_base + 0x0, core_mask);
+ 
+     u64 dsleep = deep_sleep;
+     // Put the CPU to sleep
+@@ -268,7 +293,7 @@
+     // Check that it actually shut down
+     for (i = 0; i < 50; i++) {
+         sysop("dmb ld");
+-        if (!(read64(impl + 0x100) & 0xff))
++        if (!(read64(cpu->impl_reg + 0x100) & 0xff))
+             break;
+         udelay(1000);
+     }
+@@ -282,34 +307,38 @@
+     }
+ }
+ 
+-void smp_start_secondaries(void)
+-{
+-    printf("Starting secondary CPUs...\n");
++int smp_init(void)
++{
++    if (smp_initialized)
++        return 0;
+ 
+     int pmgr_path[8];
++    u64 pmgr_reg;
++    u64 cpu_start_off;
+ 
+     if (adt_path_offset_trace(adt, "/arm-io/pmgr", pmgr_path) < 0) {
+         printf("Error getting /arm-io/pmgr node\n");
+-        return;
++        return -1;
+     }
+     if (adt_get_reg(adt, pmgr_path, "reg", 0, &pmgr_reg, NULL) < 0) {
+         printf("Error getting /arm-io/pmgr regs\n");
+-        return;
++        return -1;
+     }
+ 
+     int arm_io_node;
+     if ((arm_io_node = adt_path_offset(adt, "/arm-io")) < 0) {
+         printf("Error getting /arm-io node\n");
+-        return;
++        return -1;
+     }
+ 
+     int node = adt_path_offset(adt, "/cpus");
+     if (node < 0) {
+         printf("Error getting /cpus node\n");
+-        return;
++        return -1;
+     }
+ 
+     memset(cpu_nodes, 0, sizeof(cpu_nodes));
++    memset(cpu_info, 0, sizeof(cpu_info));
+ 
+     switch (chip_id) {
+         case S5L8960X:
+@@ -357,15 +386,15 @@
+             break;
+         default:
+             printf("CPU start offset is unknown for this SoC!\n");
+-            return;
++            return -1;
+     }
+ 
+     ADT_FOREACH_CHILD(adt, node)
+     {
+         u32 cpu_id;
+ 
+-        if (ADT_GETPROP(adt, node, "cpu-id", &cpu_id) < 0)
+-            if (ADT_GETPROP(adt, node, "reg", &cpu_id) < 0)
++        if (ADT_GETPROP(adt, node, "cpu-id", &cpu_id) != sizeof(cpu_id))
++            if (ADT_GETPROP(adt, node, "reg", &cpu_id) != sizeof(cpu_id))
+                 continue;
+ 
+         if (cpu_id >= MAX_CPUS) {
+@@ -403,16 +432,13 @@
+     if (boot_cpu_idx == -1) {
+         printf(
+             "Could not find currently running CPU in cpu table, can't start other processors!\n");
+-        return;
++        return -1;
+     }
+ 
+     spin_table[boot_cpu_idx].mpidr = mrs(MPIDR_EL1) & 0xFFFFFF;
+-
+-    /* Standalone baseline: no secondary starts, RVBAR or CPU power writes. */
+-    if (chip_id == T6050) {
+-        printf("AZAHI_ONE_CORE: boot CPU initialized; secondary startup skipped\n");
+-        return;
+-    }
++    smp_reset_stacks[boot_cpu_idx].stack = (u64)_stack_bot;
++    smp_reset_stacks[boot_cpu_idx].mpidr = spin_table[boot_cpu_idx].mpidr;
++    sysop("dsb sy");
+ 
+     for (int i = 0; i < MAX_CPUS; i++) {
+         int cpu_node = cpu_nodes[i];
+@@ -422,75 +448,83 @@
+ 
+         u32 reg;
+         u64 cpu_impl_reg[2];
+-        if (ADT_GETPROP(adt, cpu_node, "reg", &reg) < 0)
++        if (ADT_GETPROP(adt, cpu_node, "reg", &reg) != sizeof(reg))
+             continue;
+-        if (ADT_GETPROP_ARRAY(adt, cpu_node, "cpu-impl-reg", cpu_impl_reg) < 0) {
++        if (ADT_GETPROP_ARRAY(adt, cpu_node, "cpu-impl-reg", cpu_impl_reg) != sizeof(cpu_impl_reg)) {
+             u32 reg_len;
+             const u64 *regs = adt_getprop(adt, arm_io_node, "reg", &reg_len);
+             if (!regs)
+                 continue;
+             u32 index = 2 * i + 2;
+-            if (reg_len < index)
++            if (reg_len < (index + 2) * sizeof(*regs))
+                 continue;
+             memcpy(cpu_impl_reg, &regs[index], 16);
+         }
+ 
++        cpu_info[i].valid = true;
++        cpu_info[i].core = FIELD_GET(CPU_REG_CORE, reg);
++        cpu_info[i].cluster = FIELD_GET(CPU_REG_CLUSTER, reg);
++        cpu_info[i].die = FIELD_GET(CPU_REG_DIE, reg);
++        cpu_info[i].impl_reg = cpu_impl_reg[0];
++    }
++
++    cpu_start_base = pmgr_reg + cpu_start_off;
++    smp_initialized = true;
++
++    return 0;
++}
++
++void smp_start_secondaries(void)
++{
++    printf("Starting secondary CPUs...\n");
++
++    if (!smp_initialized)
++        return;
++
++    /* Standalone baseline: no secondary starts, RVBAR or CPU power writes. */
++    if (chip_id == T6050) {
++        printf("AZAHI_ONE_CORE: boot CPU initialized; secondary startup skipped\n");
++        return;
++    }
++
++    for (int i = 0; i < MAX_CPUS; i++) {
++        struct cpu_info *cpu = &cpu_info[i];
++
++        if (!cpu->valid)
++            continue;
++
+         if (i == boot_cpu_idx) {
+             // Check if already locked
+-            if (FIELD_GET(RVBAR_LOCK, read64(cpu_impl_reg[0])))
++            if (FIELD_GET(RVBAR_LOCK, read64(cpu->impl_reg)))
+                 continue;
+ 
+             // Unlocked, write _vectors_start into boot CPU's rvbar
+-            write64(cpu_impl_reg[0], (u64)_vectors_start);
++            write64(cpu->impl_reg, (u64)_vectors_start);
+             sysop("dmb sy");
+ 
+             continue;
+         }
+ 
+-        u8 core = FIELD_GET(CPU_REG_CORE, reg);
+-        u8 cluster = FIELD_GET(CPU_REG_CLUSTER, reg);
+-        u8 die = FIELD_GET(CPU_REG_DIE, reg);
+-
+-        smp_start_cpu(i, die, cluster, core, cpu_impl_reg[0], pmgr_reg + cpu_start_off);
++        smp_start_cpu(i, cpu);
+     }
+ }
+ 
+ void smp_stop_secondaries(bool deep_sleep)
+ {
+     printf("Stopping secondary CPUs...\n");
+-    int arm_io_node;
+-    if ((arm_io_node = adt_path_offset(adt, "/arm-io")) < 0) {
+-        printf("Error getting /arm-io node\n");
+-        return;
+-    }
++
++    if (!smp_initialized)
++        return;
++
+     smp_set_wfe_mode(true);
+ 
+     for (int i = 0; i < MAX_CPUS; i++) {
+-        int node = cpu_nodes[i];
+-
+-        if (!node)
++        struct cpu_info *cpu = &cpu_info[i];
++
++        if (!cpu->valid || i == boot_cpu_idx)
+             continue;
+ 
+-        u32 reg;
+-        u64 cpu_impl_reg[2];
+-        if (ADT_GETPROP(adt, node, "reg", &reg) < 0)
+-            continue;
+-        if (ADT_GETPROP_ARRAY(adt, node, "cpu-impl-reg", cpu_impl_reg) < 0) {
+-            u32 reg_len;
+-            const u64 *regs = adt_getprop(adt, arm_io_node, "reg", &reg_len);
+-            if (!regs)
+-                continue;
+-            u32 index = 2 * i + 2;
+-            if (reg_len < index)
+-                continue;
+-            memcpy(cpu_impl_reg, &regs[index], 16);
+-        }
+-
+-        u8 core = FIELD_GET(CPU_REG_CORE, reg);
+-        u8 cluster = FIELD_GET(CPU_REG_CLUSTER, reg);
+-        u8 die = FIELD_GET(CPU_REG_DIE, reg);
+-
+-        smp_stop_cpu(i, die, cluster, core, cpu_impl_reg[0], pmgr_reg + cpu_start_off, deep_sleep);
++        smp_stop_cpu(i, cpu, deep_sleep);
+     }
+ }
+ 
+--- a/src/smp.h
++++ b/src/smp.h
+@@ -3,19 +3,17 @@
+ #ifndef __SMP_H__
+ #define __SMP_H__
+ 
++#include "smp_asm.h"
+ #include "types.h"
+ #include "utils.h"
+ 
+-#define MAX_CPUS     24
+-#define MAX_EL3_CPUS 4
+-
+-#define SECONDARY_STACK_SIZE 0x10000
+-extern u8 *secondary_stacks[MAX_CPUS];
+-extern u8 *secondary_stacks_el3[MAX_EL3_CPUS];
++extern u8 secondary_stacks[MAX_CPUS][SECONDARY_STACK_SIZE];
++extern u8 secondary_stacks_el3[MAX_EL3_CPUS][SECONDARY_STACK_SIZE];
+ 
+ void smp_secondary_entry(void);
+ void smp_secondary_prep_el3(void);
+ 
++int smp_init(void);
+ void smp_start_secondaries(void);
+ void smp_stop_secondaries(bool deep_sleep);
+ 
+--- /dev/null
++++ b/src/smp_asm.h
+@@ -0,0 +1,11 @@
++/* SPDX-License-Identifier: MIT */
++
++#ifndef __SMP_ASM_H__
++#define __SMP_ASM_H__
++
++#define MAX_CPUS     24
++#define MAX_EL3_CPUS 4
++
++#define SECONDARY_STACK_SIZE 0x10000
++
++#endif
+--- a/src/start.S
++++ b/src/start.S
+@@ -1,5 +1,6 @@
+ /* SPDX-License-Identifier: MIT */
+ 
++#include "smp_asm.h"
+ #include "soc.h"
+ 
+ #define UTRSTAT 0x010
+@@ -13,6 +14,7 @@
+ .extern _v_sp0_serr
+ .extern _reset_stack
+ .extern _cpu_reset_c
++.extern smp_reset_stacks
+ .extern wdt_reboot
+ 
+ .section .init, "ax"
+@@ -150,9 +152,38 @@
+     mov w0, 'O'
+     bl debug_putc
+ 
++    // for EL3 just keep the shared reset stack for now
++    mrs x8, CurrentEL
++    cmp x8, #0xc
++    beq 2f
++
++    // check if there's already an entry in the stack table for our MPIDR
++    mrs x3, mpidr_el1
++    and x3, x3, #0xffffff
++    adrp x4, smp_reset_stacks
++    add x4, x4, :lo12:smp_reset_stacks
++    ldr x5, =MAX_CPUS
++1:
++    cbz x5, 2f // end if table, MPIDR not found -> use shared reset stack
++    sub x5, x5, #1
++
++    // x6 = MPIDR, x7 = stack
++    ldp x6, x7, [x4], #16
++
++    // check if the current entry's MPIDR matches ours
++    cmp x6, x3
++    bne 1b
++
++    // entry is valid
++    cbz x7, 2f // entry has no stack -> use shared reset stack
++    mov x1, x7 // entry has a valid stack -> use it
++    b 3f
++
++2:
+     adrp x1, _reset_stack
+     add x1, x1, :lo12:_reset_stack
+     ldr x1, [x1]
++3:
+     mov sp, x1
+ 
+     ldr x2, [sp, #-8]
