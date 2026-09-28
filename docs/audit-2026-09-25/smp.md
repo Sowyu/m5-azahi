@@ -121,6 +121,15 @@ calls `enableCPUComplex(complex, true)`. That method at
 level `0xf`. The historical J714s readback already showed that level on all
 three cluster controls, so this does not reveal a missing enable request.
 
+That conditional call is not the only route to ACC restoration. Later in
+T6050 `restoreHW`, the call at `0xfffffe0009cc11a8` enters the base
+`ApplePMGR::restoreHW` at `0xfffffe0009859618`. Its loop at
+`0xfffffe0009859770` through `0xfffffe00098597b0` dispatches
+`restoreACC(complex, false)` through the object's `+0xcf8` slot for each
+configured complex. It does not check the earlier feature gate. The
+[gate trace below](#acc-restore-calls-and-feature-gate) identifies that gate
+and distinguishes these two paths.
+
 There is a separate ACC initialization detail worth retaining. T6050
 `restoreACC` at `0xfffffe0009cc170c` calls the base implementation, then
 dispatches `writeACCReg(complex, 0xe440f8, 1, 0)` through slot `+0x1138`.
@@ -226,6 +235,43 @@ write. Searching aligned descriptor words for low bits `0xe440f8` finds no
 match in the inspected older Stage2, newer Stage2 or newer Stage1 binaries.
 Computed addresses, different bases and other firmware remain outside that
 search. No ACC initialization sequence follows from these negative results.
+
+### ACC restore calls and feature gate
+
+The conditional restore in `enableCPUComplex` reads object word `+0x2494`
+at `0xfffffe000985be0c`. This is the value of feature 77, named
+`acc-cluster-power-gating`, rather than a hardware status register.
+`getFeatureValue` at `0xfffffe000983b3f4` uses a 24-byte feature record,
+array offset `+0x1d50` and value offset `+0xc`:
+`0x1d50 + 77 * 0x18 + 0xc = 0x2494`.
+
+The base constructor copies 97 records from `0xfffffe00081ca770`.
+Record 77 at `0xfffffe00081caea8` has a name pointer to
+`0xfffffe000764718f`, with both its validity byte and value initially zero.
+The copy stub resolves through the GOT to `_memmove` at
+`0xfffffe000c40f910`; the name and zero fields were checked directly.
+
+The feature loop in `ApplePMGR::start`, at `0xfffffe000983a510` through
+`0xfffffe000983a59c`, first reads each named provider property through
+`getDTProperty`. A successful lookup marks the record valid and stores its
+value. Only then does it consult the override policy and try a four-byte
+XNU boot argument of the same name. T6050's `+0xe10` slot resolves to
+`0xfffffe0009cc65e4`, which permits the override. Failed property lookup
+skips both assignments and the boot-argument lookup. The saved restore ADT
+sets this property to one in four conditional PMGR children, but does not
+establish the selected runtime properties or boot argument. This differs
+from the separate, boot-argument-only `cpm-power-gating` policy below.
+
+A zero feature value suppresses the restore inside `enableCPUComplex`.
+It does not suppress the later base `restoreHW` loop. The T6050 call's base
+vtable pointer resolves to `0xfffffe00081c9588`; entry `+0x8e0` selects
+`ApplePMGR::restoreHW`. That routine dispatches through the live object's
+`+0xcf8` slot, whose separately dumped target is T6050 `restoreACC` at
+`0xfffffe0009cc170c`. The loop is bounded by the configured complex count,
+not feature 77. Thus the feature gate alone cannot exclude the final
+`0xe440f8` write from platform initialization. This establishes another
+static call path, not an observed write, its register purpose or its
+necessity for secondary startup. No loader option or MMIO change follows.
 
 ### ACC feature loop and separate CPM gating
 
