@@ -168,17 +168,40 @@ to the newer table without tracing its dispatcher. The decoder intentionally
 reports raw values. This comparison does not identify the tables present on
 the laptop byte for byte, or prove which sequences ran.
 
-The indexed-call trace still has a concrete inconsistency. In the older
+The indexed-call trace exposed a conditional path that a sequence-name
+filter alone hides. In the older
 Stage2, the opcode-table entry for `0xda` points to `0x1cb0e0`, which reads
 the first operand as a 16-bit index and reaches the dispatcher at `0x4a1c0`.
 That dispatcher bounds its 24-byte entries to `[0x36a340, 0x371900)`, only
 1,256 entries. The twelve SGP operands range from `0x5a8` to `0x5b3`, outside
-that table. Those records belong to kind 2 with flags 1. The parser copies
-their operands unchanged, and the pre-dispatch hook does not remap them.
-Therefore this immediate-call lookup is not a resolved execution trace of
-the SGP records. Their compilation context and handler selection still need
-tracing. Do not interpret bytes beyond the table as function pointers or
-use this partial trace to rule out firmware ACC initialization.
+that table. The parser copies their operands unchanged, and the
+pre-dispatch hook does not remap them.
+
+All twelve SGP calls are individually enclosed by opcode `0xba` with
+operands `16, 0` and an `0xc8` end marker. The guard belongs to the surrounding
+MGP sequence, so filtering only SGP records drops it. Handler `0x1cb560`
+runs this block only when the current context's 32-bit field at `+184`
+equals 16. Initialization at `0x1c524c` calls `0x8d804`, whose five-entry map
+is `2, 2, 2, 16, 1`. The map index comes from `0x521bc`, which reads firmware
+state registers. This review does not establish their values on the laptop.
+The out-of-range indices therefore do not prove an attempted dispatch or a
+missing startup operation. Never interpret bytes beyond the table as
+function pointers.
+
+Kind 2 is a real selectable input: `0x8db4c` with arguments `2, 0` selects
+it through `0x8e300` and `0x1aba9c`, retaining the same opcode table. Actual
+selection and nested conditions still matter. In the newer payload, all
+thirteen SGP records have corresponding `0xbf` guards and `0xcd` end markers;
+only their adjacency is verified here, not the newer handlers' semantics.
+
+The valid MGP indexed routines also use another layer of register descriptors.
+For example, index 374 reaches a descriptor containing `0x80e78040`.
+Helper `0xa1b94` adds its low 28 bits to an initialized `0x210000000` base,
+giving `0x210e78040`. This is a static address calculation, not an observed
+write. Searching aligned descriptor words for low bits `0xe440f8` finds no
+match in the inspected older Stage2, newer Stage2 or newer Stage1 binaries.
+Computed addresses, different bases and other firmware remain outside that
+search. No ACC initialization sequence follows from these negative results.
 
 The macOS addresses above belong to the saved 26A428 kernelcache with SHA-256
 `a691760372651464138779c3201c1886a385ca656397362d8e7701ba19ebf436`.
