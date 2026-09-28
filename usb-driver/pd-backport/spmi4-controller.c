@@ -111,6 +111,13 @@ static int azahi_spmi4_probe(struct platform_device *pdev)
 	if (!r || r->start != 0x28a1a8000ULL || resource_size(r) != 0x4000 ||
 	    !(r->flags & IORESOURCE_MEM_NONPOSTED))
 		return -EINVAL;
+	/* The platform bus attaches and powers the DT domain before probe.
+	 * Keep runtime PM disabled so genpd cannot gate it at runtime.
+	 * A missing/malformed or multiple-domain DT entry can leave it unattached.
+	 */
+	if (!pdev->dev.pm_domain)
+		return dev_err_probe(&pdev->dev, -ENODEV,
+				     "An attached power domain is required for SPMI MMIO\n");
 	ctrl = devm_spmi_controller_alloc(&pdev->dev, sizeof(*s));
 	if (IS_ERR(ctrl))
 		return PTR_ERR(ctrl);

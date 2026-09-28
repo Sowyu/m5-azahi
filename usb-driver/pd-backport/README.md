@@ -12,6 +12,20 @@ The host FFI bridge now builds with `$CC` or `cc` on Linux as well as macOS.
 private live-ADT test skips when its fixture is absent. Build directories are
 retained. The proxy's live device and image guards are unchanged.
 
+2026-09-29: the polling controller now refuses probe before controller MMIO
+unless the platform bus has attached a power domain. In the pinned kernel,
+the bus powers a single DT domain before invoking probe. With runtime PM
+disabled, genpd treats the controller as not suspended and will not gate its
+domain at runtime. Driver teardown releases devm resources before detaching
+the domain. No separate power register writes or PM-reference mechanism were
+added. The physical provider mapping and system-sleep behavior remain untested.
+
+`CC=gcc python3 test-spmi4-probe.py` passes 15 probe paths under ASan/UBSan.
+The original code and two mutations fail the unpowered-MMIO assertion.
+An AArch64 object also passes exact-header compilation and strict modpost
+with no warnings. This check builds no loadable module. The test uses a fake
+attached-domain marker; it does not execute genpd or verify electrical power.
+
 Upstream follow-up, 2026-09-28: [m1n1 PR 594](https://github.com/AsahiLinux/m1n1/pull/594)
 at `75e2f00bc27c8919410afc34f79b863f5f28883f` adds SPMI HPM access.
 Its underlying `spmi.c` already selects generation-4 FIFO offsets from the
@@ -137,7 +151,10 @@ queue flushing and interrupt-mask writes are deliberately absent.
 Both `allow_probe` and `allow_transactions` default false and are read-only
 module parameters. Probe additionally checks J714s, an explicit generation-4
 DT property and the exact saved right-port controller resource. These checks
-are containment, NOT proof of bus ownership, power state or hardware safety.
+also require an attached power domain. They do not establish that the DT
+provider controls the right hardware. Platform-bus domain attachment runs
+before the driver's `allow_probe` check, so adding a DT node can change power
+even when that parameter is false. No such node is supplied here.
 No overlay or loadable module is provided. Do not attempt live installation.
 
 Reproduce the host tests with `sh test-spmi4.sh` (Clang with AddressSanitizer
@@ -168,7 +185,7 @@ Initial and final FIFO state must be idle; a mismatch stops the instance,
 even if a later hardware state might have recovered. Rebinding is not a safe
 recovery procedure and must not be used to bypass a poisoned controller.
 
-**Still missing:** ownership/power and lifecycle validation, HPM logical
+**Still missing:** physical power-domain mapping and lifecycle validation, HPM logical
 selector/wake completion handling, and a justified IRQ or polling integration
 for the PD client. There is no IRQ domain, so the existing upstream SN201202x
 client cannot simply be bound to this prototype. Its probe changes device

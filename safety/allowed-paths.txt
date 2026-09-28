@@ -461,3 +461,4 @@ smc-driver/rtkit-buffer-bounds.patch
 smc-driver/test-rtkit-bounds.py
 smc-driver/timeout-quarantine.patch
 smc-driver/test-timeout-quarantine.py
+usb-driver/pd-backport/test-spmi4-probe.py

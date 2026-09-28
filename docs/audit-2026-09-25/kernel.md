@@ -79,7 +79,7 @@ Line numbers are for the files as they are after this pass.
 | ID | Where | Verdict | Reason |
 | --- | --- | --- | --- |
 | H3 | hpm-once.c:14-78 | CONFIRMED-NOT-FIXED (by design) | The `mode` parameter is the explicit opt-in and the default is status-only. The "collision detected in only one ordering" claim is wrong: both drivers claim a busy region, so the second always gets -EBUSY. Header comment now states that probe/awake write. |
-| M15 | spmi4-controller.c:126 | CONFIRMED-NOT-FIXED | Needs `allow_probe=1` and a DT node that does not exist; the domain choice needs hardware evidence. |
+| M15 | spmi4-controller.c | PARTIALLY-FIXED | Probe now requires an attached power domain before controller MMIO. Physical provider mapping and system sleep remain unvalidated; no DT node is supplied. |
 | M16 | spmi4-controller.c | CONFIRMED-FIXED | Poison latch now survives unbind/rebind and pins the module. |
 | M17 | spmi4-controller.c | REJECTED | devm teardown is correct; `spmi_controller_alloc()` and the in-tree Apple controller set `of_node` the same way. |
 | M18 | spmi4-controller.c | REJECTED | The driver core already logs the -EBUSY probe failure. |
@@ -159,6 +159,25 @@ refuses a resource without `IORESOURCE_MEM_NONPOSTED`, because
 uses `ioremap_np()`. `hpm-once.c` got a comment-only change; its `.ko` is
 byte-identical with this toolchain. `hpm-awake.h` and `spmi4-transport.h` are
 unchanged.
+
+The September 29 follow-up rejects probe without `dev.pm_domain` before
+mapping or reading the FIFO. The exact kernel's platform bus attaches and
+powers a single DT domain before calling the driver; absent, malformed or
+multiple-domain properties can leave this field unset. Because this driver
+never enables runtime PM, `pm_runtime_suspended()` returns false and
+`genpd_power_off()` keeps the domain on at runtime. `device_unbind_cleanup()`
+releases devm resources before domain detach, including the SPMI children.
+This avoids adding a second power-management mechanism. It does not select
+the correct physical provider or validate system sleep. Bus attachment runs
+before the driver's opt-in check, so the parameter alone cannot prevent
+power changes if a future DT node is added.
+
+`CC=gcc python3 usb-driver/pd-backport/test-spmi4-probe.py` compiles the real
+probe and checks 15 refusal, failure and success paths with ASan/UBSan.
+The original source, a removed domain check and a check moved after the FIFO
+read all fail at the cold-MMIO assertion. This is a probe model, not a genpd
+test. An exact-header AArch64 object passes strict modpost without warnings;
+no loadable controller module or overlay was produced.
 
 ### 3. DockChannel HID
 
