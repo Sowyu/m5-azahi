@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
 """In-memory format/bounds checks; no Apple firmware or hardware required."""
 import importlib.util
+from contextlib import redirect_stderr, redirect_stdout
+import io
+import json
 from pathlib import Path
 import struct
 import sys
 import unittest
+from unittest.mock import patch
 
 sys.dont_write_bytecode = True
 spec = importlib.util.spec_from_file_location('ibootdata', Path(__file__).with_name('decode-ibootdata.py'))
@@ -34,6 +38,39 @@ def fixture():
 
 
 class FormatChecks(unittest.TestCase):
+    def test_cli_preserves_guards_from_another_sequence(self):
+        data = fixture()
+        # A guard and end marker can carry a different name from their body.
+        data.extend(bytes(66))
+        struct.pack_into('<I', data, 0x1f4, 132)
+        struct.pack_into('<H', data, 0x2c2, 1)
+        data[0x2c4:0x2ca] = b'GUARD\0'
+        struct.pack_into('<IIQ', data, 0x1b0, 0, 24, len(data))
+        data.extend(struct.pack('<6I', (1 << 18) | (0xba << 8) | 2, 16, 0,
+                                (1023 << 18) | (0xda << 8) | 1, 1448,
+                                (1 << 18) | (0xc8 << 8)))
+        for flags, names in (([], None), (['--sequence', 'SAMPLE'], ['SAMPLE']),
+                             (['--all-records'], ['GUARD', 'SAMPLE', 'GUARD'])):
+            with self.subTest(flags=flags), \
+                    patch.object(sys, 'argv', ['decode-ibootdata.py', 'fixture', *flags]), \
+                    patch.object(Path, 'is_file', return_value=True), \
+                    patch.object(Path, 'open', return_value=io.BytesIO(data)), \
+                    redirect_stdout(io.StringIO()) as output:
+                self.assertEqual(decoder.main(), 0)
+            section = json.loads(output.getvalue())['sections'][0]
+            self.assertEqual(section['instruction_count'], 3)
+            if names is None:
+                self.assertNotIn('records', section)
+            else:
+                self.assertEqual([r['name'] for r in section['records']], names)
+        for flag, value in (('--sequence', 'SAMPLE'), ('--word', '1448')):
+            with patch.object(sys, 'argv', ['decode-ibootdata.py', 'fixture',
+                                           '--all-records', flag, value]), \
+                    redirect_stderr(io.StringIO()) as error, self.assertRaises(SystemExit) as failure:
+                decoder.main()
+            self.assertEqual(failure.exception.code, 2)
+            self.assertIn('cannot be combined', error.getvalue())
+
     def test_fields_and_full_section_consumption(self):
         result = decoder.decode(fixture())
         self.assertEqual(result['banner'], 'test-1')

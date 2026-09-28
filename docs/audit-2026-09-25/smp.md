@@ -411,9 +411,9 @@ bits 31:28  flags, retained without interpretation
 
 The firmware parser's operand buffer holds 32 words. The decoder checks that
 bound, section boundaries, directory ranges, names and the observed layout.
-It rejects other layouts rather than guessing. Three in-memory tests cover
-field extraction, every truncation of the synthetic input and malformed
-directories/records.
+It rejects other layouts rather than guessing. Four in-memory test groups
+cover field extraction, every truncation of the synthetic input, malformed
+directories/records and CLI preservation of guards with another sequence name.
 
 Two useful register references are now distinguished from executable startup
 instructions. Offsets below refer to the matching raw Stage2 or iBootData,
@@ -458,9 +458,15 @@ Reproduce the structural decode using a separately extracted raw payload:
 ```sh
 python3 smp/test-ibootdata.py
 python3 smp/decode-ibootdata.py /path/to/ibootdata.j714s
+python3 smp/decode-ibootdata.py /path/to/ibootdata.j714s --all-records > /path/to/full-table.json
 python3 smp/decode-ibootdata.py /path/to/ibootdata.j714s \
   --sequence MGP_CE0_ACC0_POWER_UP --word 0x10050000
 ```
+
+Use `--all-records` when tracing control flow. Sequence and operand filters
+can hide guards carrying another sequence name; they are search results,
+not self-contained instruction lists. The full view retains file order
+within each section and cannot be combined with those filters.
 
 The tool outputs raw operands and file offsets only. It has no hardware,
 write, firmware-execution or upload mode. Keep the original conditional

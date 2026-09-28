@@ -94,8 +94,10 @@ observing each core enter the loader, then all 18 CPUs executing Linux work.
 
 For offline firmware analysis, `decode-ibootdata.py` reads an already extracted
 T6050 iBootData 1.0 payload and reports its sequence records. It has no hardware
-access or execution mode. `python3 smp/test-ibootdata.py` runs three in-memory
-format/bounds tests. The investigation documents its supported layout and
+access or execution mode. Use `--all-records` to retain surrounding guards;
+filtering by sequence can hide guards carrying a different name.
+`python3 smp/test-ibootdata.py` runs four in-memory format/bounds and CLI tests.
+The investigation documents its supported layout and
 the distinction between reset-vector restoration and a new CPU startup fix.
 
 ## Linux execution check prepared offline

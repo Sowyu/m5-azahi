@@ -109,7 +109,11 @@ def main():
     parser.add_argument('--sequence', help='include records for this exact sequence name')
     parser.add_argument('--word', type=lambda value: int(value, 0),
                         help='include records containing this raw operand, e.g. 0x80688008')
+    parser.add_argument('--all-records', action='store_true',
+                        help='include every record in file order, preserving surrounding guards')
     args = parser.parse_args()
+    if args.all_records and (args.sequence is not None or args.word is not None):
+        parser.error('--all-records cannot be combined with --sequence or --word')
     try:
         if not args.payload.is_file():
             raise ValueError('input must be a regular extracted file')
@@ -124,7 +128,9 @@ def main():
             records = section.pop('records')
             section['instruction_count'] = len(records)
             section['sequence_counts'] = dict(sorted(Counter(r['name'] for r in records).items()))
-            if args.sequence is not None or args.word is not None:
+            if args.all_records:
+                section['records'] = records
+            elif args.sequence is not None or args.word is not None:
                 section['records'] = [r for r in records
                                       if (args.sequence is None or r['name'] == args.sequence)
                                       and (args.word is None or args.word in r['operands'])]
