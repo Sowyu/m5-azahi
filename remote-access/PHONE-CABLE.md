@@ -192,8 +192,16 @@ Both proxy endpoints stay on loopback. No root access is needed on Android.
    git -c http.proxy=http://127.0.0.1:8118 ls-remote https://github.com/Sowyu/m5-azahi.git HEAD
    ```
 
-   The new offline fixes are still local to the home server. Reading GitHub
-   does not retrieve unpublished changes or install a new boot image.
+   The reviewed source fixes are on `audit-2026-09-25` in
+   [PR #5](https://github.com/Sowyu/m5-azahi/pull/5). To download a separate
+   checkout through the proxy:
+
+   ```sh
+   git -c http.proxy=http://127.0.0.1:8118 clone --single-branch --branch audit-2026-09-25 https://github.com/Sowyu/m5-azahi.git m5-azahi-audit
+   ```
+
+   Choose a new destination directory. This downloads source; it does not
+   install modules or a boot image. Build artifacts remain on the home server.
 5. To stop, restore Firefox's previous proxy setting, close this forward with
    `adb -d forward --remove tcp:8118`, and press Ctrl+C in the phone's proxy
    session. This closes network listeners and preserves the config file.
