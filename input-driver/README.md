@@ -50,12 +50,20 @@ and later IRQ reuse. Two original failures and four mutations fail assertions.
 The test models the kernel's synchronization and completion contracts. It
 does not run an interrupt controller or reproduce a captured laptop failure.
 
-An optional `dockchannel.ko` compiled against the exact devel RPM without
+An optional `apple-dockchannel.ko` compiled against the exact devel RPM without
 warnings. Strict modpost, final imports, the four existing exports, AArch64,
 vermagic and module-layout checks pass. SHA-256:
-`2d4125339c14ba73b3e2fbfd2b6ede9ef0d7a4b863d1bf97cebf48a3854fcb45`.
-It is separate from both daily module sets and has not been installed. The
+`cbf30af36af34f21c054bfc05c9f0ddcb199f25f9f5e58bd614d37a0a66c6ae0`.
+It is an optional addition to the daily module sets and has not been installed. The
 manual-build limitations in [BUILD-AND-TEST.md](../docs/BUILD-AND-TEST.md) apply.
+For a reproducible build, add
+`--dockchannel-source /path/to/linux/drivers/soc/apple/dockchannel.c` to the
+Linux builder command. This checks the same base-source pin and applies the
+patch in its output directory. It names the result `apple-dockchannel.ko`,
+matching the pinned kernel's module name. The option is independent of
+`--with-input` and remains off unless the source argument is supplied.
+The combined eleven-module build passes all sixteen builder tests. Its other
+ten modules and both overlays match the prior paired build byte for byte.
 Do not replace the running parent driver: its removal reaches the HID
 driver's `BUG_ON(1)`. Any future test needs a separate boot candidate and
 keyboard-independent rollback.

@@ -51,6 +51,21 @@ class BuildChecks(unittest.TestCase):
                               output=output, smc_source=source))
         self.assertFalse(output.exists())
 
+    def test_dockchannel_source_and_patch_tool_required_before_creating_output(self):
+        source = self.root / 'dockchannel.c'
+        source.write_text('not the pinned FIFO driver')
+        output = self.root / 'output'
+        args = argparse.Namespace(devel_rpm=self.root / 'unused.rpm', output=output,
+                                  dockchannel_source=source)
+        with patch.object(builder, 'verify_rpm'):
+            with self.assertRaisesRegex(ValueError, 'dockchannel.c checksum'):
+                builder.build(args)
+            with patch.object(builder, 'sha256', return_value=builder.DOCKCHANNEL_SOURCE_SHA256), \
+                    patch.object(builder.shutil, 'which', return_value=None):
+                with self.assertRaisesRegex(ValueError, 'patch command is required'):
+                    builder.build(args)
+        self.assertFalse(output.exists())
+
     def test_battery_source_and_core_pair_required_before_creating_output(self):
         output = self.root / 'output'
         args = argparse.Namespace(devel_rpm=self.root / 'unused.rpm', output=output,
@@ -138,19 +153,38 @@ class BuildChecks(unittest.TestCase):
                          'Needs a build with --nvme-header')
     def test_actual_sart_exports_required_in_provider_and_table(self):
         module, symvers = BUILD / 'apple-sart.ko', BUILD / 'Module.symvers'
-        builder.check_sart_exports(module, symvers)
+        self.check_provider_exports(module, symvers, builder.SART_EXPORTS)
+
+    @unittest.skipUnless(BUILD and (BUILD / 'apple-dockchannel.ko').is_file(),
+                         'Needs a build with --dockchannel-source')
+    def test_actual_dockchannel_exports_and_patched_source(self):
+        self.check_provider_exports(BUILD / 'apple-dockchannel.ko', BUILD / 'Module.symvers',
+                                    builder.DOCKCHANNEL_EXPORTS)
+        manifest = json.loads((BUILD / 'manifest.json').read_text())
+        self.assertEqual(manifest['dockchannel_base_sha256'], builder.DOCKCHANNEL_SOURCE_SHA256)
+        source = 'drivers/soc/apple/dockchannel.c'
+        self.assertEqual(builder.sha256(BUILD / 'src' / source), manifest['sources'][source])
+        self.assertIn('dockchannel_cancel_wait', (BUILD / 'src' / source).read_text())
+        calls = json.loads((BUILD / 'commands.json').read_text())
+        self.assertTrue(any(Path(c[0]).name == 'patch' and '--fuzz=0' in c
+                            and c[-1].endswith('/input-driver/dockchannel-timeout.patch') for c in calls))
+
+    def check_provider_exports(self, module, symvers, required):
+        builder.check_provider_exports(module, symvers, required)
         changed_table = self.root / 'missing.symvers'
         changed_table.write_text('')
-        with self.assertRaisesRegex(ValueError, 'SART module does not export'):
-            builder.check_sart_exports(module, changed_table)
-        for symbol in builder.SART_EXPORTS:
-            changed = self.root / (symbol + '.ko')
+        with self.assertRaisesRegex(ValueError, 'module does not export'):
+            builder.check_provider_exports(module, changed_table, required)
+        for symbol in required:
+            directory = self.root / symbol
+            directory.mkdir()
+            changed = directory / module.name
             name = ('__ksymtab_' + symbol).encode() + b'\0'
             data = module.read_bytes()
             self.assertIn(name, data)
             changed.write_bytes(data.replace(name, b'X' * (len(name) - 1) + b'\0'))
-            with self.assertRaisesRegex(ValueError, 'SART module does not export'):
-                builder.check_sart_exports(changed, symvers)
+            with self.assertRaisesRegex(ValueError, 'module does not export'):
+                builder.check_provider_exports(changed, symvers, required)
 
     @unittest.skipUnless(BUILD, 'Set AZAHI_USB_BUILD to an offline build directory')
     def test_real_artifacts_and_mutated_release(self):

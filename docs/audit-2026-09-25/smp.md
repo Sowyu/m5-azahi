@@ -168,7 +168,19 @@ to the newer table without tracing its dispatcher. The decoder intentionally
 reports raw values. This comparison does not identify the tables present on
 the laptop byte for byte, or prove which sequences ran.
 
-These addresses belong to the saved 26A428 kernelcache with SHA-256
+The indexed-call trace still has a concrete inconsistency. In the older
+Stage2, the opcode-table entry for `0xda` points to `0x1cb0e0`, which reads
+the first operand as a 16-bit index and reaches the dispatcher at `0x4a1c0`.
+That dispatcher bounds its 24-byte entries to `[0x36a340, 0x371900)`, only
+1,256 entries. The twelve SGP operands range from `0x5a8` to `0x5b3`, outside
+that table. Those records belong to kind 2 with flags 1. The parser copies
+their operands unchanged, and the pre-dispatch hook does not remap them.
+Therefore this immediate-call lookup is not a resolved execution trace of
+the SGP records. Their compilation context and handler selection still need
+tracing. Do not interpret bytes beyond the table as function pointers or
+use this partial trace to rule out firmware ACC initialization.
+
+The macOS addresses above belong to the saved 26A428 kernelcache with SHA-256
 `a691760372651464138779c3201c1886a385ca656397362d8e7701ba19ebf436`.
 Older checkpoint addresses belong to a different image and must not be mixed
 with these vtable slots. Local disassembly required `ipsw --force` because

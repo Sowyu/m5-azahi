@@ -3,6 +3,7 @@
 
 Requires an AArch64 GCC 16.1 toolchain, a host C compiler, bsdtar and dtc.
 --with-input also builds the DockChannel input candidate from this repository.
+--dockchannel-source adds the optional FIFO timeout fix from pinned kernel source.
 --smc-source accepts the pinned macsmc.c and applies the offline SMC patch.
 --smc-power-source also prepares the battery firmware compatibility backport.
 --nvme-header also builds the public J714s read-only ANS/SART candidates.
@@ -27,11 +28,13 @@ CONFIG_SHA256 = '997a0fb73eb02e81a364cc3a29d81a3c6cc8c17b1980f3b9d6bb65795ace23b
 SYMVERS_SHA256 = '491c78595b727d87994f82d56d81a94b4db18b195102a163b8deaedeede2b036'
 SMC_SOURCE_SHA256 = '6a8004c39af84de5757ffac8453b3d9822a3e590ff6ac3bf7b1415f52373af0a'
 SMC_POWER_SOURCE_SHA256 = '96b6da14e998a9872d11da9c634570c598f8dcbc7d9c305f6578b775b8803935'
+DOCKCHANNEL_SOURCE_SHA256 = '83cc73986312a06d99f7e5828a078964a581be00dc5826195e4622d5c6a7bede'
 NVME_HEADER_SHA256 = '0ed6fec6c7e7067fca642241e1c8710391f7da949c41759b10ccfa45010b92cf'
 NVME_CORE_PARTS = ('core', 'ioctl', 'sysfs', 'pr', 'trace', 'multipath', 'zns', 'hwmon', 'auth')
 NVME_CORE_MARKER = 'nvme_azahi_admin_page_align_v1'
 SART_EXPORTS = {'devm_apple_sart_get', 'apple_sart_add_allowed_region',
                 'apple_sart_remove_allowed_region'}
+DOCKCHANNEL_EXPORTS = {'dockchannel_await', 'dockchannel_init', 'dockchannel_recv', 'dockchannel_send'}
 MODULES = {
     'phy-apple-t6050-usb2': 'phy-apple-t6050-usb2.c',
     'dwc3-apple-t6050': 'dwc3-apple-t6050.c',
@@ -64,15 +67,15 @@ def check_module(path):
         raise ValueError(f'{path.name}: wrong target module structure size')
 
 
-def check_sart_exports(module, symvers):
+def check_provider_exports(module, symvers, required):
     """Check the built provider, not just the kernel's preexisting exports."""
     symbols = {line.split()[-1] for line in subprocess.check_output(
                ['nm', str(module)], text=True).splitlines() if line.split()}
     exports = {fields[1] for line in symvers.read_text().splitlines()
-               if len(fields := line.split()) >= 4 and Path(fields[2]).name == 'apple-sart'}
-    if (SART_EXPORTS - exports or
-            {'__ksymtab_' + name for name in SART_EXPORTS} - symbols):
-        raise ValueError('The built SART module does not export all required symbols')
+               if len(fields := line.split()) >= 4 and Path(fields[2]).name == module.stem}
+    if (required - exports or
+            {'__ksymtab_' + name for name in required} - symbols):
+        raise ValueError(f'{module.stem} module does not export all required symbols')
 
 
 def check_nvme_core_exports(module, symvers, kernel_symvers):
@@ -98,6 +101,7 @@ def build(args):
     verify_rpm(rpm)
     smc_source = getattr(args, 'smc_source', None)
     smc_power_source = getattr(args, 'smc_power_source', None)
+    dockchannel_source = getattr(args, 'dockchannel_source', None)
     nvme_header = getattr(args, 'nvme_header', None)
     nvme_core_source = getattr(args, 'nvme_core_source', None)
     core_pins = None
@@ -121,6 +125,11 @@ def build(args):
             raise ValueError('The patch command is required for the SMC candidate')
     if smc_power_source and sha256(smc_power_source) != SMC_POWER_SOURCE_SHA256:
         raise ValueError('Wrong macsmc-power.c checksum; no output created')
+    if dockchannel_source:
+        if sha256(dockchannel_source) != DOCKCHANNEL_SOURCE_SHA256:
+            raise ValueError('Wrong dockchannel.c checksum; no output created')
+        if not shutil.which('patch'):
+            raise ValueError('The patch command is required for the DockChannel candidate')
     if nvme_header and sha256(nvme_header) != NVME_HEADER_SHA256:
         raise ValueError('Wrong nvme.h checksum; no output created')
     cc, ld = args.cross_prefix + 'gcc', args.cross_prefix + 'ld'
@@ -169,6 +178,14 @@ def build(args):
         modules['dockchannel-hid'] = name
         sources.append(name)
         source_paths[name] = HERE.parent / name
+    if dockchannel_source:
+        name = 'drivers/soc/apple/dockchannel.c'
+        modules['apple-dockchannel'] = name
+        sources.append(name)
+        source_paths[name] = dockchannel_source
+        name = 'input-driver/dockchannel-timeout.patch'
+        sources.append(name)
+        source_paths[name] = HERE.parent / name
     if smc_source:
         name = 'drivers/mfd/macsmc.c'
         modules['macsmc'] = name
@@ -210,6 +227,9 @@ def build(args):
         dest = src / name
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(source_paths[name], dest)
+    if dockchannel_source:
+        run(['patch', '--batch', '--fuzz=0', '-p1', '-d', src,
+             '-i', src / 'input-driver/dockchannel-timeout.patch'])
     if smc_source:
         run(['patch', '--batch', '--fuzz=0', '-p1', '-d', src,
              '-i', src / 'smc-driver/sram32.patch'])
@@ -314,7 +334,9 @@ def build(args):
         if undefined - exported:
             raise ValueError(f'{artifact.name}: final linked module contains missing exports')
     if nvme_header:
-        check_sart_exports(output / 'apple-sart.ko', output / 'Module.symvers')
+        check_provider_exports(output / 'apple-sart.ko', output / 'Module.symvers', SART_EXPORTS)
+    if dockchannel_source:
+        check_provider_exports(output / 'apple-dockchannel.ko', output / 'Module.symvers', DOCKCHANNEL_EXPORTS)
     if nvme_core_source:
         check_nvme_core_exports(output / 'nvme-core.ko', output / 'Module.symvers', headers / 'Module.symvers')
     artifacts = [output / (name + '.ko') for name in modules]
@@ -325,6 +347,7 @@ def build(args):
         'modules': list(modules),
         'smc_base_sha256': SMC_SOURCE_SHA256 if smc_source else None,
         'smc_power_base_sha256': SMC_POWER_SOURCE_SHA256 if smc_power_source else None,
+        'dockchannel_base_sha256': DOCKCHANNEL_SOURCE_SHA256 if dockchannel_source else None,
         'nvme_header_sha256': NVME_HEADER_SHA256 if nvme_header else None,
         'nvme_firmware_compatibility': bool(nvme_core_source),
         'nvme_core_original_sources': core_pins,
@@ -349,6 +372,8 @@ def main():
     parser.add_argument('--devel-rpm', required=True, type=Path)
     parser.add_argument('--output', required=True, type=Path)
     parser.add_argument('--with-input', action='store_true')
+    parser.add_argument('--dockchannel-source', type=Path,
+                        help='Exact kernel drivers/soc/apple/dockchannel.c; opt-in FIFO timeout fix')
     parser.add_argument('--smc-source', type=Path, help='Exact kernel drivers/mfd/macsmc.c')
     parser.add_argument('--smc-power-source', type=Path,
                         help='Exact kernel drivers/power/supply/macsmc-power.c; requires --smc-source')

@@ -62,6 +62,16 @@ onto the sanitized rootguard DT and checks their PHY/DART/AIC references.
 The exact installed private DTB and live PHY tunables remain unavailable.
 Do not replace installer hashes merely to accept these files.
 
+To build the separate [FIFO timeout fix](../input-driver/README.md#optional-fifo-timeout-fix),
+add `--dockchannel-source /path/to/linux/drivers/soc/apple/dockchannel.c`.
+The builder checks the original source hash before creating output and applies
+the patch only in the new build directory. It uses the kernel's module name,
+`apple-dockchannel.ko`, and checks all four required exports in the provider
+and its generated symbol table. The option works alongside `--with-input`,
+SMC, battery and either storage option. Without it, the FIFO driver is omitted.
+This prepares a separate boot candidate. Do not unload or unbind the running
+parent driver, whose removal reaches the HID driver's `BUG_ON(1)`.
+
 The optional SMC candidate is documented in [smc-driver/README.md](../smc-driver/README.md).
 Pass `--smc-source /path/to/linux/drivers/mfd/macsmc.c` to include it. The builder
 requires the exact source hash and applies the patch in its new output tree.
