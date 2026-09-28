@@ -281,6 +281,63 @@ from the older saved kernelcache named in the PHY header.
   from the real machine's ADT, which iBoot fills; the restore-image values
   agree with the host bits 12-14.
 
+### USB2 LPM policy gate
+
+The 26A428 Apple driver requires an explicit policy bit before its USB2
+port LPM method changes registers. Linux can enable hardware LPM from host
+and device capabilities. This makes the existing NO_LPM comparison below
+worth testing, but neither system's live LPM state is known.
+
+The kernelcache SHA-256 is
+`a691760372651464138779c3201c1886a385ca656397362d8e7701ba19ebf436`.
+`AppleUSB20XHCIPort::updateLPMPolicyGated` at `0xfffffe000b40a22c`
+requires an `OSNumber` controller property named
+`UsbHostControllerUSB2LPMPolicy` with bit 0 set. The property lookup is at
+`0xfffffe000b40a29c`; its value is tested at `0xfffffe000b40a2dc`.
+After the ready and link-state checks, missing, wrongly typed or bit-clear
+policy returns `0xe00002c7`,
+[`kIOReturnUnsupported`](https://github.com/apple-oss-distributions/xnu/blob/main/iokit/IOKit/IOReturn.h),
+before the method's register updates. This return does not clear previously
+programmed state. The `AppleUSB20XHCITypeCPort` and `AppleUSB20XHCIARMPort`
+vtables both retain this implementation at object-vtable offset `0xa80`.
+Their resolved entries are `0xfffffe00089e69e0` and `0xfffffe00089b5718`.
+
+`AppleUSBHostController::registerService` at `0xfffffe000b1cd050` selects
+the policy in this order:
+
+1. Keep an existing `UsbHostControllerUSB2LPMPolicy` property unchanged.
+2. Otherwise parse the four-byte XNU boot argument `usb2-lpm-policy`.
+3. If that argument is absent, read the provider's `usb2-lpm-policy`
+   property only if it is an `OSData` of exactly four bytes.
+
+The local value starts at zero at `0xfffffe000b1cd338`. With neither input,
+the zero check at `0xfffffe000b1cd5d8` skips publishing the property. The
+normal allocation path masks a supplied value with `3` before creating a
+32-bit `OSNumber`; an allocation-failure fallback attempts the unmasked
+nonzero value. Neither path enables bit 0 without an input containing it.
+
+Separate chained-pointer dumps resolve the boot-argument, property-existence
+and cast imports against the kernel symbol table. OSNumber and OSData
+vtable dumps confirm the value, length and byte-access methods. Recursive
+searches found neither policy key in the saved J714s restore ADT or embedded
+prelink metadata. That does not exclude later property changes, boot
+arguments or properties on the live provider. The actual controller and
+port instances have not been inspected.
+
+In the exact `7.0.13-400.asahi.fc44` source, `xhci_add_in_port()` requires
+xHCI 1.0 or later and `XHCI_HLC` in a USB2 Supported Protocol extended
+capability. `xhci_update_device()` also requires an LPM-capable non-hub
+device directly on that root port. Then `hub_set_initial_usb2_lpm_policy()`
+can allow LPM for a BESL-capable device or hard-wired port before
+SET_CONFIGURATION. No capture currently establishes those conditions on
+the failing enumeration. HCCPARAMS alone would not establish `XHCI_HLC`.
+
+`snps,usb2-lpm-disable` reaches xHCI's `XHCI_HW_LPM_DISABLE` through DWC3's
+child properties. `snps,dis_enblslpm_quirk` instead changes DWC3
+GUSB2PHYCFG.ENBLSLPM. They control different paths. No overlay or driver
+change follows from this static trace; the existing per-device NO_LPM test
+already provides a smaller attended comparison.
+
 ## USB failure analysis: -110 and -71
 
 ### -110 on live DWC3 reload
@@ -314,13 +371,15 @@ is acceptable, with a local keyboard, no SSH over USB and the phone unplugged:
 
 No code change is justified yet. Ranked hypotheses:
 
-1. USB2 hardware LPM (L1) through the eUSB2 repeater. xHCI enables USB2
-   hardware LPM at address time when the device's BOS advertises BESL
-   (`hub_set_initial_usb2_lpm_policy()` in `$KDIR/drivers/usb/core/hub.c`).
-   The L1 timeout is 512 us. The first idle gap longer than that usually
-   falls between the descriptor reads and SET_CONFIGURATION, which is where
-   -71 appears. DWC3 sets GUSB2PHYCFG.ENBLSLPM by default. The overlay sets
-   neither `snps,usb2-lpm-disable` nor `snps,dis_enblslpm_quirk`. Against
+1. USB2 hardware LPM (L1) through the eUSB2 repeater. If the host's USB2
+   protocol capability advertises `XHCI_HLC`, Linux can enable LPM for a
+   directly attached, LPM-capable non-hub device whose BOS advertises BESL.
+   The default L1 timeout is 512 us. The enable attempt happens before
+   SET_CONFIGURATION, where -71 appears, but its success and the failing
+   enumeration's capabilities are unrecorded. The [Apple policy trace](#usb2-lpm-policy-gate)
+   adds a concrete difference to check. DWC3 sets GUSB2PHYCFG.ENBLSLPM by
+   default. The overlay sets neither `snps,usb2-lpm-disable` nor
+   `snps,dis_enblslpm_quirk`. Against
    it: earlier boots worked with the same configuration, so this only fits
    if L1 exit fails intermittently.
    - Read-only check: once the phone enumerates in any mode, capture

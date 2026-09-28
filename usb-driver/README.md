@@ -18,6 +18,12 @@ installer tests pass. `USB_HOST_READY` still means only that a root hub
 exists, not that an attached device or network works. This does not fix the
 recorded `-71` or Imaging-versus-tethering failure.
 
+The [USB2 LPM trace](../docs/audit-2026-09-25/kernel.md#usb2-lpm-policy-gate)
+finds an explicit policy gate in Apple's port driver. Linux can enable LPM
+from host and device capabilities before SET_CONFIGURATION. This supports
+the existing attended NO_LPM comparison; it does not establish the failing
+enumeration's LPM state or justify a driver change yet.
+
 The five existing glue/PHY host tests now run on Linux with their temporary
 files moved to Trash. Fixed-host error cleanup, removal, the default-off PHY
 reinitialization path and overlay preflight ordering pass. Driver code is
