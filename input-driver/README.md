@@ -18,6 +18,55 @@ outputs are consumed; the eight host test groups pass with GCC and ASan/UBSan.
 No updated input module is installed, and intermittent AFE startup remains
 unresolved.
 
+## Optional FIFO timeout fix
+
+The separate [dockchannel-timeout.patch](dockchannel-timeout.patch) changes
+`drivers/soc/apple/dockchannel.c`, below the HID driver. A receive timeout can
+call `disable_irq()` from that IRQ's own thread. The kernel then waits for
+the same thread to exit, so the timeout never returns. A late TX or RX
+interrupt can also disable an IRQ that timeout cancellation disables again,
+leaving a disable depth of two. The next enable cannot restore delivery.
+These follow from the pinned source and the kernel's
+[IRQ synchronization rules](https://docs.kernel.org/core-api/genericirq.html).
+
+The patch disables without waiting for the IRQ thread, drains the hard
+handler, and consumes any late completion to balance the handler's extra
+disable. A timeout still returns `-ETIMEDOUT`. No public API, structure,
+register sequence or FIFO threshold changes. The zero-count `await` cancel
+path is unchanged; this is not a general teardown or callback-lifetime fix.
+
+Base source SHA-256:
+`83cc73986312a06d99f7e5828a078964a581be00dc5826195e4622d5c6a7bede`.
+Run from the repository root:
+
+```sh
+CC=gcc python3 input-driver/test-dockchannel-timeout.py \
+  --source /path/to/linux/drivers/soc/apple/dockchannel.c
+```
+
+Three sanitizer-backed groups check 24 successful transfers and six timeout
+interleavings, including the real receive callback path, partial transfers
+and later IRQ reuse. Two original failures and four mutations fail assertions.
+The test models the kernel's synchronization and completion contracts. It
+does not run an interrupt controller or reproduce a captured laptop failure.
+
+An optional `dockchannel.ko` compiled against the exact devel RPM without
+warnings. Strict modpost, final imports, the four existing exports, AArch64,
+vermagic and module-layout checks pass. SHA-256:
+`2d4125339c14ba73b3e2fbfd2b6ede9ef0d7a4b863d1bf97cebf48a3854fcb45`.
+It is separate from both daily module sets and has not been installed. The
+manual-build limitations in [BUILD-AND-TEST.md](../docs/BUILD-AND-TEST.md) apply.
+Do not replace the running parent driver: its removal reaches the HID
+driver's `BUG_ON(1)`. Any future test needs a separate boot candidate and
+keyboard-independent rollback.
+
+This is a concrete timeout-path bug, not an established explanation for the
+intermittent AFE startup failure. Partial packet framing and the HID header
+failure path's missing rearm remain unresolved. Successful IRQ reuse in a
+host test does not establish safe protocol recovery after a partial packet.
+
+## HID candidate
+
 The latest exact-kernel candidate includes both the GPIO block-boundary and
 HID write-length fixes below. Module SHA-256:
 `891efe20097cbdd779932ebdc8b1400fffc2443eddecf836fe5ceef6e7636990`.

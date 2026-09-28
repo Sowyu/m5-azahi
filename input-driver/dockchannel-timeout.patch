@@ -1,0 +1,40 @@
+--- a/drivers/soc/apple/dockchannel.c
++++ b/drivers/soc/apple/dockchannel.c
+@@ -69,6 +69,17 @@
+ 
+ /* Dockchannel FIFO functions */
+ 
++static void dockchannel_cancel_wait(int irq, struct completion *completion)
++{
++	disable_irq_nosync(irq);
++	/* RX waits can run inside this IRQ's thread. Only drain the hard handler. */
++	synchronize_hardirq(irq);
++
++	/* A deadline-racing handler already disabled the IRQ before completing. */
++	if (try_wait_for_completion(completion))
++		enable_irq(irq);
++}
++
+ static irqreturn_t dockchannel_tx_irq(int irq, void *data)
+ {
+ 	struct dockchannel *dockchannel = data;
+@@ -122,7 +133,8 @@
+ 
+ 			if (!wait_for_completion_timeout(&dockchannel->tx_comp,
+                                                  msecs_to_jiffies(DOCKCHANNEL_TX_TIMEOUT_MS))) {
+-				disable_irq(dockchannel->tx_irq);
++				dockchannel_cancel_wait(dockchannel->tx_irq,
++							&dockchannel->tx_comp);
+ 				return -ETIMEDOUT;
+ 			}
+ 
+@@ -164,7 +176,8 @@
+ 
+ 			if (!wait_for_completion_timeout(&dockchannel->rx_comp,
+                                                  msecs_to_jiffies(DOCKCHANNEL_RX_TIMEOUT_MS))) {
+-				disable_irq(dockchannel->rx_irq);
++				dockchannel_cancel_wait(dockchannel->rx_irq,
++							&dockchannel->rx_comp);
+ 				return -ETIMEDOUT;
+ 			}
+ 
