@@ -526,6 +526,16 @@ stopped could release buffers still used by hardware. No storage recovery
 sequence or write guard was changed. This is a confirmed source-level
 deadlock path, not evidence that it caused the recorded shutdown hang.
 
+A September 29 [optional deletion candidate](../../nvme-driver/README.md#optional-queue-deletion-allocation-candidate)
+uses nonblocking admin-tag allocation in both deletion helpers. The actual
+driver functions and pinned kernel command helper reproduce the original
+admin and nested I/O timeout cycles in a host model. The candidate passes
+those cases and exact-header compilation, but remains outside default builds.
+The same model demonstrates a separate inherited defect: disable ignores a
+failed controller-stop result and reaches request cancellation anyway.
+Breaking the allocation cycle therefore does not establish DMA safety or
+usable reset recovery. Shutdown and removal still need that stronger proof.
+
 The exact-kernel nine-module build now includes public ANS and SART candidates.
 The NVMe queue-count variable matches the kernel's `int *` API, removing its
 signedness warning. Submission tests exercise 4,096 opcode/caller/Save-bit/

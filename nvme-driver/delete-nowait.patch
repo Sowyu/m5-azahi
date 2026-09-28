@@ -1,0 +1,26 @@
+# Optional allocation-deadlock candidate; not a validated DMA recovery sequence.
+# Keep the default driver unchanged until controller-stop behavior is established.
+--- a/apple.c
++++ b/apple.c
+@@ -805,7 +805,9 @@
+ 	c.delete_queue.opcode = nvme_admin_delete_cq;
+ 	c.delete_queue.qid = cpu_to_le16(1);
+ 
+-	return nvme_submit_sync_cmd(anv->ctrl.admin_q, &c, NULL, 0);
++	/* A timeout caller may own the only admin tag. Never wait for it here. */
++	return __nvme_submit_sync_cmd(anv->ctrl.admin_q, &c, NULL, NULL, 0,
++				      NVME_QID_ANY, NVME_SUBMIT_NOWAIT);
+ }
+ 
+ static int apple_nvme_create_sq(struct apple_nvme *anv)
+@@ -836,7 +838,9 @@
+ 	c.delete_queue.opcode = nvme_admin_delete_sq;
+ 	c.delete_queue.qid = cpu_to_le16(1);
+ 
+-	return nvme_submit_sync_cmd(anv->ctrl.admin_q, &c, NULL, 0);
++	/* A timeout caller may own the only admin tag. Never wait for it here. */
++	return __nvme_submit_sync_cmd(anv->ctrl.admin_q, &c, NULL, NULL, 0,
++				      NVME_QID_ANY, NVME_SUBMIT_NOWAIT);
+ }
+ 
+ static blk_status_t apple_nvme_queue_rq(struct blk_mq_hw_ctx *hctx,

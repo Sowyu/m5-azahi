@@ -162,3 +162,51 @@ This is an uninstalled research candidate. It is read-only on J714s and
 cannot replace the private writable-root driver. No live module replacement,
 firmware restart, boot-image update or reset recovery is provided. Sleep
 remains refused and the admin-tag timeout deadlock remains unresolved.
+
+## Optional queue-deletion allocation candidate
+
+[delete-nowait.patch](delete-nowait.patch) changes only the two queue-deletion
+helpers. They use `__nvme_submit_sync_cmd()` with `NVME_SUBMIT_NOWAIT`, so an
+occupied admin tag returns an allocation error instead of waiting. Once a
+tag is acquired, command execution is still synchronous. Queue creation,
+timeout/reset policy, media-write guards and the default source are unchanged.
+
+The exact kernel maps this flag to `BLK_MQ_REQ_NOWAIT` before allocating the
+request. Its tag allocator returns before entering the wait loop when that
+flag is set. The timeout iterator holds a request reference across the
+callback, so the admin tag cannot be recycled underneath it. These details
+explain the original self-wait and the candidate's narrower change. The
+[upstream PCI driver](https://github.com/torvalds/linux/blob/master/drivers/nvme/host/pci.c)
+also allocates deletion requests with NOWAIT, but uses a different,
+asynchronous completion sequence. This patch does not import that sequence.
+
+```sh
+python3 nvme-driver/test-delete-nowait.py \
+  --nvme-core /path/to/linux/drivers/nvme/host/core.c
+```
+
+The test pins the original 7.0.13 `core.c`, extracts its real synchronous
+command helper, and compiles it with the driver's actual deletion, disable
+and timeout functions under ASan/UBSan. It compares the original and patched
+paths, including both a live admin timeout and an I/O timeout whose deletion
+command times out. It also checks command results, allocation errors, missed
+interrupts and non-live timeouts. The candidate avoids both modeled tag-wait
+cycles; reverting either helper or selecting reserved tags fails assertions.
+The same host checks pass with the optional firmware-compatible Apple source
+using `--apple-source /path/to/paired-build/src/nvme-driver/apple.c`.
+
+The standalone candidate compiles and passes strict modpost against the exact
+target headers and export table, with four warnings in the target's unchanged
+`objpool.h`. Disassembly passes flag value 2 to both deletion submissions.
+The module is SHA-256
+`d150ca024f992f2725fbcf570c8be511e46bcac349a63ca9e2b03e0ff8c7120a`.
+No exports or dependencies beyond the existing kernel API are added.
+
+This does not establish safe recovery. Both original and candidate paths
+still cancel requests after `nvme_disable_ctrl()` reports failure. The test
+deliberately demonstrates that inherited path with a modeled stop failure;
+it does not prove that real DMA has stopped. Cancellation may release buffers
+still used by hardware, and the J714s runtime reset refusal remains. Full
+Linux workqueue concurrency and firmware behavior are not modeled. The patch
+is excluded from default builds and install recipes. Nothing was loaded or
+installed, and the writable-root driver is unchanged.

@@ -464,3 +464,5 @@ smc-driver/test-timeout-quarantine.py
 usb-driver/pd-backport/test-spmi4-probe.py
 standalone-loader/smp-shared-state.patch
 smp/test-smp-shared-state.py
+nvme-driver/delete-nowait.patch
+nvme-driver/test-delete-nowait.py
