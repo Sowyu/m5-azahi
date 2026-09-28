@@ -160,6 +160,7 @@ obtained this way stay outside the repository.
 python3 input-driver/test-power-request.py
 python3 input-driver/test-firmware-lifetime.py
 python3 input-driver/test-gpio-preflight.py
+python3 input-driver/test-gpio-acquisition.py
 bash nvme-driver/test-root-write-policy.sh
 python3 usb-driver/test-usb-runner.py
 python3 usb-driver/test-usb-glue.py

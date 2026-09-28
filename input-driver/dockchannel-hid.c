@@ -182,6 +182,8 @@ struct dchid_iface {
 	size_t hid_desc_len;
 
 	struct gpio_desc *gpio;
+	/* HID open and firmware GPIO events can acquire the same descriptor. */
+	struct mutex gpio_lock;
 	char gpio_name[MAX_GPIO_NAME];
 	int gpio_id;
 
@@ -256,6 +258,7 @@ dchid_get_interface(struct dockchannel_hid *dchid, int index, const char *name)
 	init_completion(&iface->out_complete);
 	init_completion(&iface->ready);
 	mutex_init(&iface->out_mutex);
+	mutex_init(&iface->gpio_lock);
 	spin_lock_init(&iface->resp_lock);
 	iface->wq = alloc_ordered_workqueue("dchid-%s", WQ_MEM_RECLAIM, iface->name);
 	if (!iface->wq)
@@ -518,26 +521,32 @@ done:
 static int dchid_request_gpio(struct dchid_iface *iface)
 {
 	char prop_name[MAX_GPIO_NAME + 16];
+	struct gpio_desc *gpio;
+	int ret = 0;
 
+	mutex_lock(&iface->gpio_lock);
 	if (iface->gpio)
-		return 0;
+		goto out;
 
 	dev_info(iface->dchid->dev, "Requesting GPIO %s#%d: %s\n",
 		 iface->name, iface->gpio_id, iface->gpio_name);
 
 	snprintf(prop_name, sizeof(prop_name), "apple,%s", iface->gpio_name);
 
-	iface->gpio = devm_gpiod_get_index(iface->dchid->dev, prop_name, 0, GPIOD_OUT_LOW);
+	gpio = devm_gpiod_get_index(iface->dchid->dev, prop_name, 0, GPIOD_OUT_LOW);
 
-	if (IS_ERR_OR_NULL(iface->gpio)) {
+	if (IS_ERR_OR_NULL(gpio)) {
 		dev_err(iface->dchid->dev, "Failed to request GPIO %s-gpios: %ld\n",
-			prop_name, PTR_ERR(iface->gpio));
-		iface->gpio = NULL;
-		return -1;
+			prop_name, PTR_ERR(gpio));
+		ret = -1;
+		goto out;
 	}
 
+	iface->gpio = gpio;
 	dev_info(iface->dchid->dev, "Acquired GPIO %s-gpios\n", prop_name);
-	return 0;
+out:
+	mutex_unlock(&iface->gpio_lock);
+	return ret;
 }
 
 static int dchid_start_interface(struct dchid_iface *iface)

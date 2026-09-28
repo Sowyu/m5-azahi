@@ -49,7 +49,7 @@ struct device_link { struct device *supplier; };
 struct dockchannel_hid { struct device *dev; int tx_lock; struct device_link *helper_link;
                         void *dc, *new_iface_wq, *comm; };
 struct dchid_iface { struct dockchannel_hid *dchid; const char *name; unsigned gpio_id;
-                    char gpio_name[MAX_GPIO_NAME]; struct gpio_desc *gpio; };
+                    char gpio_name[MAX_GPIO_NAME]; struct gpio_desc *gpio; int gpio_lock; };
 struct dchid_hdr { unsigned char bytes[8]; };
 #define for_each_property_of_node(np,p) for ((p)=(np)->properties;(p);(p)=(p)->next)
 #define for_each_child_of_node(np,c) for ((c)=(np) ? (np)->child : NULL;(c);(c)=(c)->next)
@@ -69,6 +69,8 @@ static int dma_set_mask_and_coherent(struct device *d, uint64_t mask) {
  assert(d==&pdev.dev && mask==UINT64_MAX); return dma_error;
 }
 static void mutex_init(int *lock) { *lock=0; }
+static void mutex_lock(int *lock) { assert(!*lock); *lock=1; }
+static void mutex_unlock(int *lock) { assert(*lock==1); *lock=0; }
 static char *kstrndup(const char *s, size_t n, unsigned flags) {
  assert(flags==GFP_KERNEL); allocations++;
  if (allocations==fail_string) return NULL;

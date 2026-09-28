@@ -14,8 +14,8 @@ The 2026-09-28 local source no longer depends on a private `hid-ids.h` path.
 with the exact public devel RPM and the other required arguments from the
 [Linux build instructions](../docs/BUILD-AND-TEST.md). Strict export/vermagic
 checks pass. Firmware lookup now requires a zero success result before its
-outputs are consumed. Eight original host groups, three firmware-lifetime groups and three GPIO
-preflight groups pass with GCC and ASan/UBSan.
+outputs are consumed. Sixteen host groups cover protocol handling, firmware
+lifetime and GPIO preflight/acquisition, including checks with GCC and ASan/UBSan.
 No updated input module is installed, and intermittent AFE startup remains
 unresolved.
 
@@ -99,7 +99,7 @@ it has not verified those assumptions during hardware reset. A stalled
 partial packet remains pending. TX timeout behavior and teardown are unchanged.
 
 Base HID source SHA-256:
-`c8a3653ad9de136f360d925270c7adf6129b39a37e865886337dedb3bf737c9e`.
+`e4eef4a5e032a18eb2e2b5762fbb4ddfb6756a6ab8f04105cf1230880d8dcdd5`.
 The test pins this source and applies the patch in a temporary copy:
 
 ```sh
@@ -117,7 +117,7 @@ The optional `dockchannel-hid.ko` passes exact-header AArch64 compilation,
 strict modpost, imports, vermagic and module-layout checks. It retains the
 same four packed-member warnings in the target's `objpool.h` as the baseline,
 with no new warning messages. SHA-256:
-`31baa61bc3f882749831b0ad6f1130fdd3e3d1c024d5e356f7c8bbb04530dd43`.
+`2b998865310375fb1ffa128e40481843111130df432fc839e70a082ebe475aa8`.
 It uses the existing DockChannel API and needs no public header change.
 
 The normal builder does not apply this patch, and the existing module sets
@@ -129,12 +129,38 @@ explanation for the intermittent AFE failure.
 
 ## HID candidate
 
-The latest exact-kernel candidate includes the GPIO provider preflight,
-firmware staging cleanup and earlier input fixes below. Module SHA-256:
-`31b166184af03367eb2c76a38cd67de533f22d6bc37fa1356aa058bc15aeda54`.
+The latest exact-kernel candidate serializes GPIO acquisition and includes
+the provider preflight, firmware staging cleanup and earlier input fixes.
+Module SHA-256:
+`0a3f054f6ccc76fc7138a71fb0363eb367988395c80166bcb5b9983d9e6f8476`.
 The combined eleven-module build passes all sixteen builder checks. Ten other
 modules and both USB overlays remain byte-identical to the previous set.
 The build retains its existing 63 target-header and pointer-sign warnings.
+
+HID open and asynchronous firmware GPIO events both call
+`dchid_request_gpio()`. HID core serializes opens, but that lock does not
+cover the event worker. If both requests overlap, gpiolib can grant one
+and reject the other with `-EBUSY`. The old error path could then overwrite
+the successful caller's cached descriptor with NULL, leaving the GPIO
+claimed but inaccessible through the interface.
+
+A per-interface mutex now covers the cache check and acquisition. Only a
+successful descriptor is published. The lock is released before GPIO pulses
+or command waits; the request flags, pulse timings and error return stay
+unchanged. This does not serialize firmware startup as a whole.
+
+```sh
+CC=gcc python3 input-driver/test-gpio-acquisition.py
+```
+
+Two ASan/UBSan groups compile the actual interface creation and GPIO request
+functions. They cover failed lookup followed by success, cached reuse and
+sixteen forced two-thread overlaps with either success or failure of the
+first lookup. The original loses its cached descriptor; removing the lock,
+its initialization or the cache check also fails assertions. The model uses
+pthreads and exclusive GPIO claims. It does not run the HID core, kernel
+workqueues, firmware or a GPIO controller. Both receiver variants pass.
+No captured laptop trace establishes that this overlap caused an AFE failure.
 
 Probe now checks the same parent GPIO properties that firmware requests use.
 The old check scanned child nodes even though the J714s DT places

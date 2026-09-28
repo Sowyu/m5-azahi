@@ -468,3 +468,4 @@ nvme-driver/delete-nowait.patch
 nvme-driver/test-delete-nowait.py
 input-driver/test-firmware-lifetime.py
 input-driver/test-gpio-preflight.py
+input-driver/test-gpio-acquisition.py
