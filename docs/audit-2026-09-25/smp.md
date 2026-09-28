@@ -239,10 +239,24 @@ to ADT register index 0. Translating the saved die-0 ADT gives
 These are separate from the previously observed cluster controls and
 per-device power-status registers.
 
-`restoreHW` calls this method at `0xfffffe0009cc11e8`, using a stored boolean
-loaded from `cpm-power-gating` during `initDriver`. `quiesceACC` also calls it
-with true. That property is absent from the saved restore ADT, which does
-not establish its live IOKit value or the registers' state. Exact operand
+`restoreHW` calls this method at `0xfffffe0009cc11e8`, using a stored boolean.
+The T6050 constructor at `0xfffffe0009cbf9b0` sets object byte `+0x738e1`
+to one with a halfword store of `0x0101` at `0xfffffe0009cbf9f4`.
+At `0xfffffe0009cc04fc`, `initDriver` calls
+`ApplePMGR::getBootArg("cpm-power-gating", &value)` through stub
+`0xfffffe0009cc8a74`. That helper at `0xfffffe000983b0c4` requests a
+four-byte value from `_PE_parse_boot_argn` at `0xfffffe000c3a8084`.
+If the lookup succeeds, `initDriver` replaces the byte with `value != 0`;
+otherwise it leaves the default true. `restoreHW` reads that same byte.
+`quiesceACC` also calls the gating method with true.
+
+The earlier description of `cpm-power-gating` as an ADT property was
+incorrect. It is an XNU boot argument consumed by this Apple driver, not a
+Linux or m1n1 option. Its absence from the saved restore ADT says nothing
+about the active policy. The constructor default also does not establish
+the registers' state when iBoot hands control to a custom loader.
+
+The live boot argument and register values have not been established. Exact operand
 searches of both decoded iBootData versions found no matching register
 offsets or bus addresses; indexed or computed accesses remain possible.
 
