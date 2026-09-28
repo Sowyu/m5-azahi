@@ -1213,10 +1213,13 @@ static int dockchannel_hid_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	struct dockchannel_hid *dchid;
-	struct device_node *child, *helper;
+	struct device_node *helper;
 	struct platform_device *helper_pdev;
 	struct property *prop;
 	int ret;
+
+	if (!dev->of_node)
+		return -EINVAL;
 
 	ret = dma_set_mask_and_coherent(&pdev->dev, DMA_BIT_MASK(64));
 	if (ret)
@@ -1231,30 +1234,33 @@ static int dockchannel_hid_probe(struct platform_device *pdev)
 	mutex_init(&dchid->tx_lock);
 
 	/*
-	 * First make sure all the GPIOs are available, in cased we need to defer.
+	 * First make sure all the GPIOs are available, in case we need to defer.
 	 * This is necessary because MTP will request them by name later, and by then
 	 * it's too late to defer the probe.
+	 * dchid_request_gpio() uses this device's node and a consumer name without
+	 * the -gpios suffix. Use the same lookup here, without changing pin state.
 	 */
 
-	for_each_child_of_node(dev->of_node, child) {
-		for_each_property_of_node(child, prop) {
-			size_t len = strlen(prop->name);
-			struct gpio_desc *gpio;
+	for_each_property_of_node(dev->of_node, prop) {
+		size_t len = strlen(prop->name);
+		struct gpio_desc *gpio;
+		char *con_id;
 
-			if (len < 12 || strncmp("apple,", prop->name, 6) ||
-			    strcmp("-gpios", prop->name + len - 6))
-				continue;
+		if (len < 12 || strncmp("apple,", prop->name, 6) ||
+		    strcmp("-gpios", prop->name + len - 6))
+			continue;
 
-			gpio = fwnode_gpiod_get_index(&child->fwnode, prop->name, 0, GPIOD_ASIS,
-						      prop->name);
-			if (IS_ERR_OR_NULL(gpio)) {
-				if (PTR_ERR(gpio) == -EPROBE_DEFER) {
-					of_node_put(child);
-					return -EPROBE_DEFER;
-				}
-			} else {
-				gpiod_put(gpio);
-			}
+		con_id = kstrndup(prop->name, len - 6, GFP_KERNEL);
+		if (!con_id)
+			return -ENOMEM;
+		gpio = fwnode_gpiod_get_index(dev_fwnode(dev), con_id, 0, GPIOD_ASIS,
+					      prop->name);
+		kfree(con_id);
+		if (IS_ERR_OR_NULL(gpio)) {
+			if (PTR_ERR(gpio) == -EPROBE_DEFER)
+				return -EPROBE_DEFER;
+		} else {
+			gpiod_put(gpio);
 		}
 	}
 

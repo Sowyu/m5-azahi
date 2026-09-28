@@ -503,11 +503,16 @@ candidate builds against the recovered exact kernel devel RPM.
 GPIO lookup review: the archived J714s Linux DT puts `apple,afe-reset-gpios`
 on the transport node, matching `dchid_request_gpio()`'s parent-device lookup.
 Moving that lookup to the `multi-touch` child would be wrong for this DT.
-The separate probe preflight scans children and passes the full `-gpios`
-property as the consumer name; it does not validate these parent properties.
-The exact kernel's default `fw_devlink` implementation independently parses
-`-gpios` supplier links, but the live graph and boot overrides were not
-inspected. No probe-order or GPIO-provider change was made on that assumption.
+The September 29 follow-up fixes the separate probe preflight, which scanned
+children and passed the full `-gpios` property as the consumer name. It now
+checks the transport node, strips the suffix and defers before initializing
+the transport when a matching GPIO provider is not ready. Temporary
+`GPIOD_ASIS` requests are released; the later GPIO request is unchanged.
+Three sanitizer groups and four mutation checks cover the actual probe and
+lookup, and both input module variants pass exact-header builds. The exact
+kernel's default `fw_devlink` implementation independently parses `-gpios`
+supplier links, but the live graph and boot overrides were not inspected.
+This is a source-level preflight fix, not an established AFE startup cause.
 
 Storage follow-up, 2026-09-28: the earlier H4 wording overstated the guarantee
 that a timeout reaches removal. With the controller LIVE, firmware not

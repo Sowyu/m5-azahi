@@ -159,6 +159,7 @@ obtained this way stay outside the repository.
 ```sh
 python3 input-driver/test-power-request.py
 python3 input-driver/test-firmware-lifetime.py
+python3 input-driver/test-gpio-preflight.py
 bash nvme-driver/test-root-write-policy.sh
 python3 usb-driver/test-usb-runner.py
 python3 usb-driver/test-usb-glue.py
@@ -168,8 +169,10 @@ CC=gcc python3 usb-driver/pd-backport/test-proxy-hpm.py
 Input checks compile the actual functions against transport stubs: v2
 bytes/order, error handling, packet receive bounds, ACK lifetime, firmware
 failures and concurrent sends. The firmware-lifetime check also verifies CPU
-staging cleanup while retaining DMA buffers across failed uploads. The
-old-board power request remains unchanged.
+staging cleanup while retaining DMA buffers across failed uploads. The GPIO
+preflight check verifies parent-node lookup, provider deferral and temporary
+request release before transport initialization. It models the GPIO backend,
+not fw_devlink or pin voltage. The old-board power request remains unchanged.
 Storage checks compile the actual policy with address/undefined sanitizers.
 USB checks use shell mocks and a C harness; they do not load kernel modules.
 The HPM proxy tests compile a host FFI library and use simulated transactions.

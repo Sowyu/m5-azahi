@@ -14,8 +14,8 @@ The 2026-09-28 local source no longer depends on a private `hid-ids.h` path.
 with the exact public devel RPM and the other required arguments from the
 [Linux build instructions](../docs/BUILD-AND-TEST.md). Strict export/vermagic
 checks pass. Firmware lookup now requires a zero success result before its
-outputs are consumed. Eight original host groups and three firmware-lifetime
-groups pass with GCC and ASan/UBSan.
+outputs are consumed. Eight original host groups, three firmware-lifetime groups and three GPIO
+preflight groups pass with GCC and ASan/UBSan.
 No updated input module is installed, and intermittent AFE startup remains
 unresolved.
 
@@ -99,7 +99,7 @@ it has not verified those assumptions during hardware reset. A stalled
 partial packet remains pending. TX timeout behavior and teardown are unchanged.
 
 Base HID source SHA-256:
-`ac8711e9da3c1b4b0d8abee5d72a0e5d81436b3c80ee1137d2b98f2e4fa301c7`.
+`c8a3653ad9de136f360d925270c7adf6129b39a37e865886337dedb3bf737c9e`.
 The test pins this source and applies the patch in a temporary copy:
 
 ```sh
@@ -117,7 +117,7 @@ The optional `dockchannel-hid.ko` passes exact-header AArch64 compilation,
 strict modpost, imports, vermagic and module-layout checks. It retains the
 same four packed-member warnings in the target's `objpool.h` as the baseline,
 with no new warning messages. SHA-256:
-`7d0296cc9406a4a6974eb6de0028f804157b5055bba41d589d063ca1f1f7a41c`.
+`31baa61bc3f882749831b0ad6f1130fdd3e3d1c024d5e356f7c8bbb04530dd43`.
 It uses the existing DockChannel API and needs no public header change.
 
 The normal builder does not apply this patch, and the existing module sets
@@ -129,12 +129,39 @@ explanation for the intermittent AFE failure.
 
 ## HID candidate
 
-The latest exact-kernel candidate includes the firmware staging cleanup,
-GPIO block-boundary and HID write-length fixes below. Module SHA-256:
-`c1c2d9f6bb3bf3e3a0ab35cce02088e25c8e0e1fbf836ac6dd14f90ca61642cb`.
+The latest exact-kernel candidate includes the GPIO provider preflight,
+firmware staging cleanup and earlier input fixes below. Module SHA-256:
+`31b166184af03367eb2c76a38cd67de533f22d6bc37fa1356aa058bc15aeda54`.
 The combined eleven-module build passes all sixteen builder checks. Ten other
 modules and both USB overlays remain byte-identical to the previous set.
 The build retains its existing 63 target-header and pointer-sign warnings.
+
+Probe now checks the same parent GPIO properties that firmware requests use.
+The old check scanned child nodes even though the J714s DT places
+`apple,afe-reset-gpios` and `apple,stm-reset-gpios` on the transport itself.
+It also passed the full property name as the consumer ID, causing gpiolib to
+append another suffix. The corrected lookup strips `-gpios`, uses the
+transport node and returns `-EPROBE_DEFER` before transport initialization
+when that provider is unavailable. It requests `GPIOD_ASIS` and releases each
+successful request. The later firmware request still uses `GPIOD_OUT_LOW`.
+This follows the pinned kernel's `of_find_gpio()` and the documented
+[consumer-name lookup](https://docs.kernel.org/driver-api/gpio/board.html).
+
+```sh
+CC=gcc python3 input-driver/test-gpio-preflight.py
+```
+
+Three ASan/UBSan groups compile the actual probe and later GPIO-request
+functions. Synthetic nodes cover an absent device-tree node, missing/delayed providers,
+allocation failures, unrelated properties, child-node exclusion and balanced
+releases.
+The old probe and four mutations fail assertions. Both normal and fragmented
+receiver sources pass. The test stops probe at a missing MTP helper after
+preflight and does not model fw_devlink, real GPIO callbacks or pin voltage.
+The exact kernel can already order GPIO suppliers through fw_devlink, but the
+live device graph and boot overrides are unknown. This fixes the driver's
+explicit preflight, not a demonstrated cause of the laptop's AFE failures.
+Other lookup errors retain the existing behavior and do not abort probe.
 
 Firmware startup now releases its CPU staging copy on success and every
 error exit. Previously `dchid_get_firmware()` retained that allocation until
