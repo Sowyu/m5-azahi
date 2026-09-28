@@ -1,337 +1,475 @@
-# Secondary CPU startup on T6050 (M5 Pro)
+# Secondary CPU startup on T6050
 
-Linux runs on CPU0 only. The other 17 cores never come online, and that is the
-biggest daily problem now. This report is the offline diagnosis: why the stock
-loader path does not start secondaries on this SoC, the smallest change with a
-real chance of fixing it, and the one attended boot that tells the two live
-hypotheses apart. No hardware was available. Evidence is the Mac17,9
-kernelcache (build 26A428), the J714s ADT, the m1n1 source, the M4 Pro project
-(damsleth/wallace), and the repo's own V1..V5 live checkpoints
-(`research-archive/probe/CPU-CHECKPOINT.md`).
+Status after the offline follow-up on 2026-09-25: no all-core fix is proven.
+The hardware is unavailable. CPU0 remains the only core demonstrated running
+Linux. No image was installed and no boot policy, disk or firmware was changed.
 
-## What is already known, restated with sources
+## Evidence that constrains the next attempt
 
-The M5 secondaries power on but never run loader code. iBoot and PMGR report
-the core active: the recorded PS_ACTUAL goes 0x100 to 0x1f0, yet the core never
-stores its reset-trace marker, across five loader builds (V1..V5,
-CPU-CHECKPOINT.md). The person who added the initial T6050 port saw the same
-thing: "the cores turn on (as can be seen in pmgr), but never start executing
-our code" (AsahiLinux/m1n1 PR #610, commit `b2d3f5e`).
+The historical V1 through V5 experiments requested CPU starts and observed
+power state `0x100` becoming `0x1f0`. They observed neither reset-trace stores
+nor executing secondaries. Corrected masks, complete CPU_START bank writes,
+code-cache cleaning, reset-vector variants, RAM-independent SEV loops, a local
+IPI, and a secondary-cluster APSC experiment did not establish core entry.
+The full record is [CPU-CHECKPOINT.md](../../research-archive/probe/CPU-CHECKPOINT.md).
+Repeating those experiments without a new hypothesis adds little evidence.
 
-The stock start path is unchanged from what works on older chips. In m1n1
-`src/smp.c`, `smp_start_cpu()` does two MMIO writes to the PMGR CPU_START bank
-at `pmgr_reg + 0x88000`:
+The initial upstream T6050 port independently reported powered cores that did
+not enter loader code on two macOS versions. The upstream start-register
+sequence still has no demonstrated T6050 reset-release fix in the inspected
+history. The 2026-09-27 shared-state changes are described below.
+Sources: [PR 610](https://github.com/AsahiLinux/m1n1/pull/610),
+[current smp.c](https://github.com/AsahiLinux/m1n1/blob/main/src/smp.c).
 
-```c
-write32(cpu_start_base + 0x4, 1 << (4 * cluster + core)); // "system enable"
-write32(cpu_start_base + 0x8 + 4 * cluster, 1 << core);   // start the core
+The M4 WFI and secondary-read-only-memory fixes address later failures. They
+do not explain the absence of even the first reset marker on this machine.
+Sources: [PR 657](https://github.com/AsahiLinux/m1n1/pull/657),
+[PR 672](https://github.com/AsahiLinux/m1n1/pull/672).
+
+## Upstream changes checked on 2026-09-28
+
+Upstream merged a separate SMP refactor on 2026-09-27. Commit
+[`d16a2f4e3c4d`](https://github.com/AsahiLinux/m1n1/commit/d16a2f4e3c4d)
+places shared CPU state in its own aligned linker section and maps every RAM
+alias of it as Device-nGnRnE. This addresses inconsistent views when one CPU
+has its MMU enabled and another does not. It is more comprehensive than a
+single cache clean. Commit
+[`1b469fcb618f`](https://github.com/AsahiLinux/m1n1/commit/1b469fcb618f)
+uses MPIDR to recover a returning CPU's stack and identity after deep WFI.
+The series also moves stacks into static storage and caches ADT topology.
+
+The changes involve both linker scripts, `memory.c`, `start.S`, `smp.c`,
+headers and boot initialization. Copying the new `smp.c` into the incomplete
+private snapshot is insufficient. They need review together when rebuilding
+the complete loader. The local guard patch still targets the archived
+2026-09-11 source, not this refactor.
+
+At `c42cf43d0388`, upstream still uses the four-core CPU_START stride and the
+older RVBAR mask. Keep the local T6050 corrections and timeout quarantine
+when integrating newer code. These cache and re-entry fixes may matter after
+reset entry works, but do not explain the RAM-independent SEV experiment's
+negative result. No new hardware attempt is justified by the refactor alone.
+
+## The earlier skip-CPU_START hypothesis is withdrawn
+
+The earlier report suggested skipping or OR-ing the CPU_START `+4` write
+because readback changed from `0x3fffe` to `0x3fffc`. That observation does not
+show that the write disabled CPU1.
+
+The saved Mac17,9 kernelcache, build 26A428, provides a contrary trace:
+
+- `IOPMGR::enableCPUCore` at `0xfffffe000c2d50dc` drops the entry argument and
+  calls `ApplePMGR::enableCPUCore` at `0xfffffe000985bf4c`.
+- `enableCPUCores` at `0xfffffe000985bafc` reaches `configMiscCores` at
+  `0xfffffe000985b3d4` through vtable slot `+0xd20`. T6050 does not override it.
+- That method builds the requested per-die and per-cluster masks and writes
+  CPU_START `+4`, then `+8 + 4 * cluster`. For CPU1 these are the loader's
+  same values. It also writes zero for a die without requested cores.
+
+This supports trigger semantics for `+4`. Keep that write. Neither the
+readback transition nor correct RVBAR values distinguish firmware reset
+ownership from another pre-entry failure. The old diagnostic's claim that one
+probe could settle those alternatives was too strong.
+
+## Source fixes prepared
+
+### The CPU driver also reaches the same PMGR sequence
+
+A further trace in the same 26A428 kernelcache connects the CPU driver to
+that mask-based path. `AppleARMCPU::startCPU` at `0xfffffe0008c89c6c`
+returns immediately for the boot CPU. Otherwise it invokes its
+`function-enable_core` object with arguments `1, 0, 0`; it does not forward
+the supplied entry or context. The object's creation is visible at
+`0xfffffe0008c88a94`, and the boot-CPU flag comes from comparing the CPU
+number with `ml_get_boot_cpu_number` at `0xfffffe0008c887dc`.
+
+The specialized `ApplePMGRFunctionEnableCPUCore::callFunction` at
+`0xfffffe000988483c` forwards its stored 32-bit mask and the boolean enable
+argument through PMGR vtable slot `+0xa88`. Its initializer loads that mask
+from the function data at offset `+8`, at `0xfffffe0009884928`.
+The T6050 vtable entry at `0xfffffe00082c3c28` resolves to
+`ApplePMGR::enableCPUCores` at `0xfffffe000985bafc`, the method already
+traced above. The function object's own `+0x140` slot at
+`0xfffffe00081d2000` resolves to the specialized call method, not the generic
+`AppleARMFunction` dispatcher.
+
+These wrappers add no separate reset release or entry-address write. They
+strengthen the case for retaining the existing CPU_START sequence, but do
+not account for platform initialization before `startCPU`, nor establish
+where the failed secondaries execute. No new hardware sequence follows
+from this trace.
+
+### Platform restore has an unresolved ACC difference
+
+The 26A428 trace now also covers platform initialization. `ApplePMGR::start`
+at `0xfffffe000983a14c` dispatches register maps, register groups and driver
+initialization through T6050 vtable slots `+0xca8`, `+0xcb0` and `+0xcb8`.
+It then calls `initAON`, `restoreHW(true)`, `lateRestoreHW` and
+`initFixedFreq`. These calls are separate from `AppleARMCPU::startCPU`.
+
+T6050 `restoreHW` at `0xfffffe0009cc0f38` first loops over CPU complexes and
+calls `enableCPUComplex(complex, true)`. That method at
+`0xfffffe000985bda8` calls `configCPUComplexPowerState` and conditionally
+`restoreACC`. The cluster-power implementation still selects low-nibble
+level `0xf`. The historical J714s readback already showed that level on all
+three cluster controls, so this does not reveal a missing enable request.
+
+There is a separate ACC initialization detail worth retaining. T6050
+`restoreACC` at `0xfffffe0009cc170c` calls the base implementation, then
+dispatches `writeACCReg(complex, 0xe440f8, 1, 0)` through slot `+0x1138`.
+The fourth argument selects the complex's die when zero; it does not force
+every machine to die zero. J714s describes only die zero.
+
+The mapping is now traced through `_getACCMappingAndLength`, `_getAccMapping`,
+`initRegMaps` and `ApplePMGR::writeReg64`. Each physical cluster has an
+11-entry table. Logical base `0xe40000` selects RegMap IDs `0x2d`, `0x38`
+and `0x16`, mapped to PMGR ADT `reg` indices `0x11`, `0x1b` and `0x25`.
+The saved J714s ADT translates their bus addresses through `arm-io`'s
+`0 -> 0x200000000` range. This gives 64-bit writes of one at
+`0x210e440f8`, `0x211e440f8` and `0x212e440f8`. All three offsets fit their
+`0xc020`-byte register ranges. These are static address translations, not
+hardware reads or observed writes.
+
+The inspected complete
+loader's [archived cpufreq.c](../../research-archive/standalone-loader/m1n1-20260911/src/cpufreq.c)
+contains a matching `cluster->base + 0x440f8` 64-bit write of one for
+older chips, but its switch omits T6050. Its cluster table names T6050 while
+`cpufreq_get_features` returns NULL for it, causing `cpufreq_init` to return
+before initializing any cluster.
+
+The base ACC restore handles performance counters, CPU energy accumulators
+and a feature loop before the final T6050 write. An exact operand search of
+the historical `18000.161.9` iBootData found none of the logical, cluster-relative
+or bus addresses above. That search cannot exclude computed addresses or
+initialization elsewhere in firmware, and it uses an older build than this
+kernelcache.
+
+This remains an untested initialization difference. The register's purpose,
+current value and dependency on the base ACC restore are unresolved. The
+historical tests do not record a deliberate write to this offset. Do not
+enable the older-chip
+frequency/voltage sequence or copy the entire macOS restore routine into the
+loader. No MMIO probe or write was added. The one-core guard remains.
+
+The separately packaged Stage1 tables were checked too. Within each of
+25G72 and 26A428, `iBootDataStage1` and `iBootData` decompress to identical
+payloads despite different IM4P wrappers. Both newer wrappers match their
+J714s manifest SHA-384 digests. The 26A428 payload is 455,974 bytes, banner
+`mBoot-20457.1.29`, SHA-256
+`70b919e3ec8b54c9d36979e11e4bc8b73180a1b842db01742dad01bef75d1a44`.
+Its four code sections contain 16,088, 843, 5,439 and 59 records. The same
+exact-operand ACC search has no matches in this version either.
+
+Opcode numbers are build-specific. For example, the twelve leading records
+in `SGP_CE0_ACC0_POWER_UP` have the same operands and flags in both payloads,
+but their opcode changes from `0xda` to `0xe0`; the newer sequence also adds
+a thirteenth record. Do not apply the older opcode-handler interpretation
+to the newer table without tracing its dispatcher. The decoder intentionally
+reports raw values. This comparison does not identify the tables present on
+the laptop byte for byte, or prove which sequences ran.
+
+These addresses belong to the saved 26A428 kernelcache with SHA-256
+`a691760372651464138779c3201c1886a385ca656397362d8e7701ba19ebf436`.
+Older checkpoint addresses belong to a different image and must not be mixed
+with these vtable slots. Local disassembly required `ipsw --force` because
+its fileset stub parser rejected a chained pointer; relevant dispatch targets
+were checked against separately dumped vtable pointers and GOT symbols.
+This was a bounded static review, not an exhaustive platform call-tree audit.
+
+### Guarded loader changes
+
+The patch in [smp/](../../smp/README.md) fixes the six-core mask in both start
+and stop paths, and adds the missing return after an incompatible locked
+reset vector. It also checks T6050 RVBAR bit 11, rejects mismatched CPU IDs
+and die-2 templates, handles stack allocation failure, and quarantines a
+timed-out T6050 start. It leaves the one-core guard in place.
+
+The J714s restore ADT describes die-0 CPU IDs 0 through 17 as three groups of
+six. Each `function-enable_core` argument is `1 << cpu_id`. The old
+`4 * cluster + core` expression overlaps groups and selects the wrong global
+bit for CPU6 through CPU17. The corrected expression is `6 * cluster + core`
+on T6050 only. CPU1's mask is unchanged.
+
+The diagnostic now accepts only `azahi.smp=probe` and checks both token
+boundaries. Previously `prefixazahi.smp=start` could select start mode, and
+unknown modes performed PMGR reads before rejection. Duplicate requests are
+now refused. The actual compiled diagnostic has no CPU-start or MMIO-write
+calls.
+
+Probe access is restricted to T6050, board 8, J714s. PMGR must resolve to
+`0x280600000` and cover the CPU_START bank through offset `0x88010`. Each
+CPU must have the expected die-0 ID, cluster, core and implementation-register
+range. Only `impl+0` is read. It never reads the debug block or `impl+0x100`.
+The restore-template die-2 nodes are skipped.
+
+The standalone entry invokes the probe before `kboot_prepare_dt`, and refuses
+handoff on a reported diagnostic error. The former proposed call inside
+`kboot_boot` was after CPU-node pruning and unsuitable for startup experiments.
+
+## New static SPTM observation
+
+The same public 26A428 restore image contains `Firmware/sptm.t6050.release.im4p`.
+Its extracted payload has SHA256
+`8adf36441b2d53ad8407cea8e36c46ae3f1743340b1095e3eebbf64c77dd8e2d`.
+It was disassembled locally, never executed or placed in this repository.
+
+A path at `0xfffffff0270af400`, with a second entry at `0xfffffff0270af408`,
+reads `MPIDR_EL1` and masks it to the low 16 bits. It searches 36 records at
+`0xfffffff027116180`, with stride `0x1800`. A record must have a nonzero first
+byte and its word at `+0x1620` must match the masked MPIDR. On no match, the
+path sets `x0` to `0xdead` and remains in a WFE loop at
+`0xfffffff0270af514`. A match selects stack and translation state and proceeds.
+
+The record writer is `sptm_register_cpu` at `0xfffffff0270bcfac`. Its dispatch
+entry points to that address and names `SPTM_FUNCTIONID_REGISTER_CPU`. It
+finds the requested physical CPU in `/cpus` using its `reg` property, obtains
+`cpu-impl-reg`, `acc-impl-reg` and `cpm-impl-reg`, then fills the record. It
+stores the physical ID at `+0x1620` and publishes the first byte with a release
+store at `0xfffffff0270bd204`. The initial bootstrap calls it for the boot
+CPU at `0xfffffff0270e58ac`. Apple's published XNU also calls
+`sptm_register_cpu(cpu->phys_id)` while building CPU topology.
+Source: [Apple machine_routines.c](https://github.com/apple-oss-distributions/xnu/blob/main/osfmk/arm64/machine_routines.c).
+
+This identifies a registration requirement within SPTM. It does not prove
+that the failed cores reach SPTM, that the custom boot leaves it active, or
+that these records are missing on the target. A matching Apple RVBAR does
+not settle those questions. The next source question is which reset path
+iBoot selects under the custom boot policy and whether it requires this
+registration. Do not poke the table, call an assumed SPTM ABI, or copy these
+virtual addresses into a hardware probe.
+
+## iBoot reset-vector writer and WFI allocation
+
+The public 26A428 iBoot payload was extracted and inspected, SHA256
+`2f0b8037ad7163923a72214e4652baa5c0d8df65aa225cac69400393cee44b07`.
+It identifies itself as `iBootStage2`; its `mBoot-20457.1.29` banner matches
+the recorded Stage1 version number only. The same
+hardware log records Stage2 `mBoot-18000.161.9`, which is different. These
+findings do not identify the exact Stage2 code that handed off to the custom
+loader. The separate historical ibootdata extraction was version
+`18000.161.10`, also different from that Stage2; it is not a replacement.
+The follow-up identified its reset-vector writer. Addresses in this section
+are file offsets in the raw payload, not runtime addresses.
+
+At `0x3fef0`, iBoot aligns its selected entry to 4 KiB and calls `0x170450`.
+That routine constructs `(entry & 0x3fffffff800) | 1` at `0x1704c4`, then
+writes it to each address from `0x4315c`. It reads the register back and checks
+the same mask including the lock bit. The address-list routine constructs
+`0x210050000 | (die << 38) | (cluster << 24)`, adds `core << 20`, and iterates
+three clusters with a queried core count. This independently confirms the
+die-0 implementation-register map used by the diagnostic.
+
+The 42-bit address mask includes bit 11. The old loader comparison masked it
+out, so a reset vector pointing 2 KiB past `_vectors_start` could pass. The
+patch and diagnostic now preserve that bit. A compiled regression check
+rejects both a 2 KiB mismatch and a 4 KiB mismatch before allocation or MMIO
+writes. This is a comparison fix, not evidence that either mismatch caused
+the historical failures.
+
+Another path allocates `0xc000` bytes at `0x291ac` and fills them with the
+WFI instruction `0xd503207f` at `0x291fc` through `0x29208`. The resulting
+48 KiB buffer has exactly the SHA256 recorded for the target's CTRR region:
+`bc4a4e3073dfa66ac5ea39867e4c18866e96b396f32b9479b1499b9744b81871`.
+Any 48 KiB buffer filled with this instruction has that hash. It does not
+identify which firmware version created the buffer.
+The branch at `0x28554` separates this layout path from the call to
+`0x29394`, which prepares SPTM objects. A second allocation on that latter
+path fills only `0x4000` bytes with WFI, at `0x2abf8` through `0x2ac44`.
+Thus the observed WFI buffer alone does not establish a live SPTM reset path.
+Its allocation is now explained, but secondary execution through it is not.
+
+These offsets can be checked without hardware using the extracted raw
+payload and an AArch64 objdump:
+
+```sh
+aarch64-linux-gnu-objdump -D -b binary -m aarch64 \
+  --start-address=0x170450 --stop-address=0x170554 iboot.j714s
 ```
 
-The private loader's `smp.c` is byte-identical to upstream here (it only adds
-an early `AZAHI_ONE_CORE` return for T6050). The `0x88000` offset is right for
-T6050: it is `CPU_START_OFF_T6031`, and the offline ApplePMGR analysis confirmed
-T6050 `initRegGroups` maps this group at offset `0x88000`. The live addresses
-line up exactly: ADT `/arm-io/pmgr` reg[0] is `0x80600000`, which resolves to
-`0x280600000` with the arm-io parent range applied, so `cpu_start_base` is
-`0x280688000` and the recorded live register `0x280688004` is `+0x4`.
+## Stage versions resolved offline, 2026-09-28
 
-The M4 result does not transfer. On the M4 Pro (T6040, also an SPTM SoC),
-the same bare PMGR write starts all 14 secondaries: they enter m1n1, return
-per-core heartbeats, and later enter Linux
-(`scratch/pcie/wallace/evidence/2026-07-10-t6040-smp-writeup.md` and
-`2026-07-29-t6040-SMP-14-CORES-UP.md`). So SPTM being resident is not by itself
-the blocker, and the M4 fixes (park in WFE, reserve the CTRR SMP-RO region,
-`idle=nop`) address a different failure: on M4 the cores execute and then lose
-state at WFI, which is not what happens on M5.
+The public `UniversalMac_26.6_25G72_Restore.ipsw` from Apple's update CDN
+contains J714s Stage2 and iBootData with the recorded `mBoot-18000.161.9`
+version. Both IM4P files match the J714s BuildManifest SHA-384 digests.
+Only selected files were downloaded, and nothing was executed or installed.
+Matching version strings are not a byte comparison with the target.
 
-## How macOS starts a core on this SoC (26A428)
+The decompressed Stage2 is 4,102,280 bytes, SHA256
+`fa596237671bb33aa28c12dfa3f5196595f6bb4be6a3582d1f659ddedfd0c77c`.
+It independently confirms the reset-vector mask: call site `0x41bd0` passes
+a 4 KiB-aligned entry to `0x171808`, which applies `0x3fffffff800`, sets bit 0
+and writes and checks the implementation registers. Its layout path allocates
+and fills the same 48 KiB WFI region at `0x2e2e0` through `0x2e30c`.
+The iBootData payload is 459,150 bytes, SHA256
+`8eee86e205591907b4edfeda6ebdcf29ec9325b4bc4b4c726fe69d8d52871352`.
+The table framing is now decoded below. Most operation semantics remain
+unresolved; the sequence names alone do not justify a register write.
 
-The XNU path on this kernelcache is a chain of virtual calls that ends in a
-PMGR register write, the same family of write the loader already does:
+The public `UniversalMac_27.0_26A428_Restore.ipsw` from the same CDN
+also supplies `LLB.j714s.RELEASE.im4p`. Its manifest digest verifies, and its
+payload identifies itself as Stage1 `mBoot-20457.1.29`, SHA256
+`d54f3496267002816e05e4f4f405374bfe6e755f20792d6f5362cb8d876a9353`.
+The entry code loads its relocation destination from file offset `0x380`:
+`0x1fc08c000`, exactly the boot CPU's historical `RVBAR_EL2` value.
+This gives that address a concrete firmware association. It does not show
+where a failed secondary executes, whether Stage1 remains resident, or which
+reset exception level that secondary selects. Do not read or modify that
+address on hardware to test this association.
 
-- `AppleARMCPU::startCPU` at `0xfffffe0008c89c6c` invokes the ADT
-  `function-enable_core` platform function (the `/cpus/cpuN` `function-enable_core`
-  property, function tag "Core", arg 1).
-- That resolves to `ApplePMGRFunctionEnableCPUCore::callFunction` at
-  `0xfffffe000988483c`, which tail-calls `ApplePMGR::enableCPUCores` at
-  `0xfffffe000985bafc`.
-- `enableCPUCores` calls `ApplePMGR::configMiscCores` at `0xfffffe000985b3d4`,
-  which does the actual per-core register programming through the PMGR RegMap
-  writer `writeReg32` (T6050 override `AppleT6050PMGR::writeReg32` at
-  `0xfffffe0009cc60f8`, vtable slot 0x1060).
+These findings improve firmware provenance and preserve the existing mask
+fix. They supply no new reset-release sequence, so CPU startup remains blocked
+on a new hypothesis and attended evidence.
 
-So the OS does not start a core through a magic secure call here: it writes
-PMGR registers, like m1n1 does. Two things stand out, though:
+No new reset-release sequence was established. Do not execute these firmware routines
+or replace installed firmware with the analysis input.
 
-- `PE_cpu_start_from_kext` at `0xfffffe000c40c484` is a panic stub
-  ("PE_cpu_start_from_kext unimplemented", `AppleARMSMP.cpp`). The classic
-  kext-driven CPU-start entry is gone from this build; core bring-up is wired
-  through the platform-function and SPTM machinery instead.
-- The kernel is an SPTM kernelcache (segments `__DATA_SPTM`,
-  `__TEXT_BOOT_EXEC.__bootcode`, and a large `sptm_*` symbol set). The reset
-  entry and exception-level bootstrap of a starting core run in the guarded
-  domain, not in the OS.
+## Matching Stage2 selects SPTM from the image layout
 
-`configMiscCores` writing PMGR is necessary but may not be sufficient on its
-own once SPTM owns the reset vector. That is the crux below.
+The matching `18000.161.9` Stage2 branches at file offset `0x2d534` on the
+kernel-layout field at offset `0x38`. A nonzero field calls the SPTM object
+layout routine at `0x2e520`; zero continues into the alternate layout path
+that contains the 48 KiB WFI allocation described above.
 
-## Ranked diagnosis
+A separate hibernation check identifies this field more closely. At
+`0x1a7ab8` it requires layout `present == 1`, and at `0x1a7ac4` tests the
+64-bit field at `+0x38` for nonzero. A mismatch with its saved SPTM flag reaches
+an assertion string at file offset `0x352809`. That string names the field
+`kc_layout->bx_size` and compares the resulting predicate with `uses_sptm`.
+This identifies an image-layout condition rather than a per-core power bit.
 
-### 1. The CPU_START "+0x4" enable register is not a plain RW latch, and the stock write clears the bit it needs. Loader-fixable. Medium confidence.
+Asahi's [August 2026 progress report](https://asahilinux.org/2026/08/progress-report-7-2/)
+independently describes SPTM setup as conditional on booting XNU, and explains
+why normal m1n1 boot leaves it unloaded. The same report describes multicore
+progress separately. The inference is that SPTM registration should not be
+treated as a universal missing prerequisite for a raw custom loader.
 
-iBoot leaves `cpu_start_base + 0x4` holding `0x3fffe`, which is bits 1..17, one
-per secondary (all 17 pre-enabled). The stock `smp_start_cpu()` then overwrites
-`+0x4` with `1 << (4*cluster+core)`. For CPU1 that is `0x2`. The one recorded
-live read of this register went from `0x3fffe` before the attempt to `0x3fffc`
-after (CPU-CHECKPOINT.md, V1). That is the target core's own bit (bit 1) coming
-back cleared, not set. The upstream comment calls `+0x4` "some kind of system
-level startup/status bit. Without this, IRQs don't work." If that bit must stay
-set for the core to run and the register latches or is write-1-to-clear on
-T6050, then the stock write disables the very core it then tries to start with
-the `+0x8` write. On older SoCs the same overwrite is harmless, which is why
-this only bites here.
+This still does not reveal a failed secondary's PC or the exact live value
+of that layout field. The historical raw-loader boot and the WFI buffer are
+consistent with the non-SPTM path; they do not authorize probing protected
+firmware or issuing SPTM calls. No CPU-start sequence or installed image was
+changed as a result of this trace.
 
-This is the one hypothesis a loader can act on. Candidate fix, in
-`src/smp.c` `smp_start_cpu()`, gated on `chip_id == T6050 || chip_id == T6051`:
-do not overwrite `+0x4`. Preferred form is to skip the write entirely and rely
-on iBoot's `0x3fffe`, because if `+0x4` is write-1-to-clear then even an
-`|=` of the target bit clears it. Second form is a read-modify-write OR. It is
-about two lines behind a chip check.
+## iBootData framing and reset-register references
 
-Confidence is medium, not high: the evidence is a single recorded read pair.
-`0x3fffe -> 0x3fffc` is also consistent with the hardware acking or consuming
-the start request rather than the write breaking it. The attended test below
-is designed to settle exactly this.
+The offline decoder [decode-ibootdata.py](../../smp/decode-ibootdata.py) parses
+the raw `18000.161.9` payload above. It consumes all four code sections exactly:
+16,542, 843, 5,411 and 59 records respectively. The name section contains 416
+sequence names plus the `MAX_SEQ` sentinel. These are format checks, not proof
+that each operation has been understood. No firmware bytes are in the source
+tree.
 
-### 2. The secondary reset entry is owned by SPTM/firmware, not the per-core Apple reset vector. Not loader-fixable. Medium confidence.
+The header is iBootData version 1.0. A target-pointer table selects chip,
+revision and a third selector. The six T6050 revision entries in this file
+share one `RCfg` directory. Its five 16-byte descriptors contain a 32-bit kind,
+32-bit byte length and 64-bit file offset. Kind 4 has 66-byte name entries,
+each a 16-bit sequence ID followed by a 64-byte string buffer. Kinds 0 through
+3 contain framed records. All integer fields are little endian.
 
-The core may reset into a firmware-owned vector and park in a WFI loop, so the
-PMGR power-on turns the domain on but nothing ever fetches loader code. Support:
+Stage2's parser at file offset `0x1c5004` extracts the record header as follows:
 
-- The CTRR-locked, secondary-only 48 KiB region is filled entirely with WFI
-  (`0xd503207f`), verified across its whole range through `0x10004bbc000`
-  (CPU-CHECKPOINT.md). Upstream identifies this same region on M4/A18/M5 as
-  read-only to secondary cores (`s3_0_c11_c0_0/1`, PR #657) with unknown
-  purpose. A WFI-filled RO region is what an unassigned core would park in.
-- The recorded cluster doorbells read 0, and no secondary ever set its flag.
-- The architectural reset vector on the boot core reads `RVBAR_EL2 =
-  0x1fc08c000`, a firmware region, distinct from the per-core Apple reset
-  register that holds the loader base. If secondaries fetch from the firmware
-  vector rather than their impl register, no loader poke redirects them.
-- `PE_cpu_start_from_kext` is a panic stub in 26A428; the OS starts cores
-  through SPTM-mediated machinery.
-
-Counter-evidence, which is why this is not ranked first: on M4 (also SPTM) the
-bare PMGR write works, and on T6050 the checkpoints report CPU1's impl reset
-register reads the loader base and is locked, i.e. iBoot did point it at the
-loader. If that value is honored on reset, hypothesis 1 or 4 explains the
-failure without SPTM. If it is shadowed by SPTM, this hypothesis holds.
-
-If this is the cause, secondaries need Apple secure-monitor cooperation that
-Linux cannot get from outside SPTM. A Linux-side workaround would need one of:
-an SPTM CPU-boot call with a known ABI and accepted caller provenance (the
-wallace SPTM work shows the SPTM dispatch ABI is reachable for NVMe/SART but
-its caller-domain checks are not understood, `2026-07-23-sptm-three-soc-structural-diff.md`);
-or a boot flow where SPTM does not hold the cores, so the impl reset register
-wins as it does on M4. Neither is available offline, and the second may be
-disallowed by the M5 boot policy.
-
-### 3. WFI/WFIT loses architectural state. Real, but downstream, not the cause. High confidence it is not the CPU1 blocker.
-
-On M4/M5 a secondary can lose most of its register file at WFI unless
-`CYC_OVRD_DISABLE_WFI_RET` is cleared, which m1n1 only does when
-`apple_sysregs_unlocked` is true (false on T6050). Upstream mitigates by
-reserving the 48 KiB SMP-RO region (PR #657) and appending `idle=nop
-arm64.nowfxt` (yuka `feature/wfi-bootarg`). But this only matters after a core
-executes and reaches WFI. It cannot explain zero reset-trace stores on M5, so
-it is a real follow-up once cores run, not the reason they do not.
-
-### 4. The "+0x4" global-bit mask is wrong for 6-core clusters. Real bug, but not the CPU1 blocker. High confidence.
-
-`1 << (4*cluster+core)` assumes at most 4 cores per cluster. T6050 clusters
-have 6 cores each (ADT: cluster 0 M-cores id 0..5, cluster 1 M-cores id 6..11,
-cluster 2 P-cores id 12..17). So cores in cluster 1 and up get the wrong global
-bit. This is the known "aliases starting at ADT id 6" issue. It does not
-explain CPU1, which is cluster 0 core 1 and maps to bit 1 either way. It should
-be fixed alongside hypothesis 1 (use `6*cluster+core`, or drop `+0x4` entirely).
-
-## Candidate fix and why the diagnostic does not apply it directly
-
-The smallest change with a real chance is hypothesis 1's `+0x4` change in
-`src/smp.c`. It cannot live in a new file: the reset landing needs `smp.c`'s
-own `target_cpu` and `_reset_stack`, which are file-private, so only `smp.c`
-can start a core in a way the loader can observe. The rules for this audit do
-not allow editing existing loader files, so the change is specified here for
-the private tree, and the new default-off loader file gathers the evidence that
-licenses it. Exact change, private `standalone-loader/m1n1-20260911/src/smp.c`,
-inside `smp_start_cpu()`:
-
-```c
-    // Some kind of system level startup/status bit
-    // Without this, IRQs don't work
-    if (chip_id != T6050 && chip_id != T6051)
-        write32(cpu_start_base + 0x4, 1 << (4 * cluster + core));
-    // T6050/T6051: iBoot pre-sets +0x4 to 0x3fffe (all secondaries). The
-    // overwrite cleared the target bit in the one recorded live read
-    // (0x3fffe -> 0x3fffc), so leave iBoot's mask in place. See smp.md.
+```text
+bits  7:0   number of following 32-bit operands
+bits 17:8   opcode, ten bits
+bits 27:18  sequence ID, ten bits
+bits 31:28  flags, retained without interpretation
 ```
 
-Remove the private `AZAHI_ONE_CORE` early return for T6050 to reach this code.
+The firmware parser's operand buffer holds 32 words. The decoder checks that
+bound, section boundaries, directory ranges, names and the observed layout.
+It rejects other layouts rather than guessing. Three in-memory tests cover
+field extraction, every truncation of the synthetic input and malformed
+directories/records.
 
-## The loader diagnostic (default-off)
+Two useful register references are now distinguished from executable startup
+instructions. Offsets below refer to the matching raw Stage2 or iBootData,
+as specified, not addresses to use on the laptop:
 
-New files, compiled but default-off:
-`standalone-loader/m1n1-20260911/src/azahi_smp.c` and `.h`. No `azahi.smp=`
-cmdline token means it does nothing, so default boots are unchanged.
+- iBootData `0x50e58` and `0x50e94`, sequence `MPMGR_D2A_IBOOT2B`, contain
+  opcode 0 with address words `2, 0x80688010` and `2, 0x80688008`, both with
+  value 1. Stage2's handler at `0x1c7824` constructs the 64-bit address from
+  the first two operands. It queues a 32-bit write through `0x1c6208`.
+  The surrounding conditional at `0x50e20`, alternate branch at `0x50e68`
+  and end marker at `0x50ea4` mean both writes are not an unconditional list
+  to replay. The conditional's hardware meaning is still unresolved.
+- The `MGP_CE0_ACC0_POWER_UP`, `ACC1_POWER_UP` and `ACC2_POWER_UP` sequences
+  contain opcode `0x15` for all 18 implementation-register bases. Their first
+  records are at iBootData `0x5ee34`, `0x61204` and `0x635ac`. The address map
+  is `0x210050000 + (cluster << 24) + (core << 20)`, six cores per cluster.
+  Stage2's handler at `0x1c8de0` calls the 64-bit read helper `0x1c63b4`, then
+  passes that existing register value to `0x1c6208` for later restoration.
+  The trailing operands `0, 0x100` are not a literal new reset vector.
 
-- `azahi.smp=probe`: read-only. Logs each secondary's Apple reset register
-  (`cpu-impl-reg[0]`), its lock bit, and whether it equals the loader entry
-  `_vectors_start`, plus the whole CPU_START bank (`+0x0/+0x4/+0x8/+0xc/+0x10`)
-  on die 0. It reads only the reset register (offset 0), which
-  `smp_start_cpu()` also reads before starting, so it is safe on a powered-down
-  core. It never reads `impl+0x100` (the CPU status register, only safe on a
-  running core) and never writes.
-- `azahi.smp=start`: logs CPU_START, runs the stock `smp_start_secondaries()`
-  (its own 100 ms per core bounded wait), logs CPU_START again, then reports
-  `smp_is_alive()` per core. The before/after of `+0x4` shows whether the stock
-  write clears the enable bit (hypothesis 1). All secondaries reporting not
-  alive while the reset register is correct and locked points at hypothesis 2.
+The queue routine compiles register writes into command buffers through
+`0x1ce28c`; these handlers do not directly perform those writes. Conditional
+opcode `0xbe` around the RVBAR records checks the selected cluster's core
+count through `0x8f174`. Its packed operand holds cluster in bits 15:8 and
+core index in bits 7:0. This supports a per-present-core restoration path.
+It does not establish that the historical CPU_START experiments omitted a
+required operation, or that these power-transition command buffers were
+executed during their reset attempts.
 
-How it is called from the loader. The same way `azahi_pcie_init` already is:
-inside the `T6050` branch of `kboot_boot` in `kboot.c`, right after the
-`azahi_pcie_init(pcie_cmdline, dt)` call, reusing the resolved bootargs pointer:
+The CPU_START conditional is opcode `0xc0` with operands `0x4000, 0, 0`.
+Its handler at Stage2 `0x1cb200` tests bit 46 of the active context's 64-bit
+flags at offset `0x50`; it does not read a power register. Context setup
+at `0x1c5334` calls `0x8d83c` and stores those flags at image-relative
+`0x460450`. Every normal return from that initializer leaves bit 46 clear:
+the three initial constants have high words `0x00308001`, and none of its
+later flag additions sets that bit. This identifies the initial selection
+as the cluster-0 branch. It does not prove the flag's meaning, exclude later
+context changes, or turn the branch into a secondary-core release recipe.
 
-```c
-        azahi_smp_diag(pcie_cmdline);
+Reproduce the structural decode using a separately extracted raw payload:
+
+```sh
+python3 smp/test-ibootdata.py
+python3 smp/decode-ibootdata.py /path/to/ibootdata.j714s
+python3 smp/decode-ibootdata.py /path/to/ibootdata.j714s \
+  --sequence MGP_CE0_ACC0_POWER_UP --word 0x10050000
 ```
 
-with `#include "azahi_smp.h"` next to the existing `azahi_pcie.h` include. That
-call is not added here (it would edit `kboot.c`); it is a one-liner the private
-tree adds.
+The tool outputs raw operands and file offsets only. It has no hardware,
+write, firmware-execution or upload mode. Keep the original conditional
+context when interpreting a filtered record. The reset-release blocker
+remains unresolved.
+## Validation and remaining work
 
-### Compile and test results
+Eight host tests pass. They compile the actual diagnostic and patched start/stop
+functions with UndefinedBehaviorSanitizer. They check all 18 masks, legacy
+mapping, ordered register writes, incompatible reset-vector refusal, exact
+mode parsing, malformed ADT refusals and die-2 exclusion. A simulated timeout
+checks that a late core cannot make the boot CPU leave quarantine, change its
+target, or replace the retained stack. Allocation-failure and output-directory
+refusals are also checked. The tests cannot model real reset delivery, cache
+coherence or firmware behavior.
 
-- `azahi_smp.c` compiles clean against upstream m1n1 headers with the aarch64
-  cross gcc 16.1 from `env.sh` and the required freestanding flags
-  (`-ffreestanding -fno-builtin -nostdinc -isystem ... -mgeneral-regs-only
-  -I<m1n1>/src -I<m1n1>/sysinc -Wall -Wextra -Werror`). No warnings. The only
-  defined symbol is `azahi_smp_diag`; everything else resolves against m1n1.
-- `python3 smp/test-smp-diag.py`: 4 host checks pass. They compile the token
-  parser out of the C and confirm it is default-off and word-bounded (a longer
-  token never trips a shorter mode, and `start` never fires for `probe`), and
-  statically confirm probe mode contains no `write32`/`write64` and that
-  `smp_start_secondaries()` is called from exactly one place.
+The diagnostic and patched `smp.c` also compile with the aarch64 GCC 16.1
+freestanding toolchain, with `-Wall -Wextra -Werror`. The public snapshot
+still lacks parts of the private loader, so this is not a linked boot image.
+`smp/build-offline.py` now reproduces that build with a complete local header
+tree and writes a manifest alongside four objects. The build now includes
+`azahi_standalone.c` and a pinned PMGR source patch providing its previously
+missing read-only `pmgr_lookup_device_addr` dependency. A relocatable link
+resolves the custom entry, diagnostic and lookup symbols. Three host groups
+check the lookup without linking MMIO or power operations. Existing output
+directories and unreviewed PMGR source hashes are refused; artifacts are
+retained. This component check does not produce a complete linked boot image.
 
-## Attended test plan
+The separate [full loader link check](../../standalone-loader/README.md#complete-offline-link-check)
+now links both C/assembly/Rust ELF variants with no undefined symbols. Linked
+code inspection verifies the standalone entry, diagnostic order and T6050
+NVMe refusal. The eighth test checks that this build refuses existing output
+and a missing Rust target before preparing artifacts. The private v7 payload
+is still absent; no replacement boot image was packaged or installed.
 
-Goal of the first session: decide hypothesis 1 vs 2 before changing any start
-code. Read-only first.
+The startup patch now retains the shared reset context and stops after the
+first T6050 timeout. It does not use the loader's rebooting panic handler.
+A timed-out core must not be followed by another start, chainload, Linux boot
+or allocation reuse until a physical cycle. The old stock-start diagnostic
+is no longer available. A separate diagnostic entry and a source-backed
+reset-release change remain necessary before another start experiment.
 
-Step 1, probe (no install, no writes).
-
-- Build the loader with the `azahi_smp_diag(pcie_cmdline)` call added, or with a
-  temporary unconditional `azahi_smp_diag("azahi.smp=probe")` for a proxy run.
-- Chainload it over the proxy exactly like the V1..V5 diagnostics, on a fresh
-  physical cycle with no other proxy client. Do not start secondaries first.
-- Expected log lines:
-  - `AZAHI_SMP: pmgr_reg = 0x280600000, cpu_start_base = 0x280688000`
-  - `AZAHI_SMP: loader entry _vectors_start = 0x... boot MPIDR = 0x... boot_cpu_idx = 0`
-  - one `AZAHI_SMP: cpuN ... impl=0x210N50000 rvbar=0x... lock=1 ==entry` line
-    per core (rvbar should equal the loader entry; lock should be 1)
-  - `AZAHI_SMP: die0 CPU_START @0x280688000: +0=... +4=0x3fffe +8=... ...`
-- The load-bearing line is `+4`. If it reads `0x3fffe`, iBoot pre-enabled every
-  secondary and hypothesis 1 is in play. If any `rvbar` line reads `!=entry` or
-  `lock=0`, the reset register is not pointing at the loader and hypothesis 2
-  (or an RVBAR problem) is confirmed instead.
-
-Step 2, start (reproduces the failure with before/after evidence).
-
-- Same build, plus the private `smp.c` `AZAHI_ONE_CORE` early return removed
-  (otherwise `smp_start_secondaries()` returns before starting anything and
-  this step shows nothing). Keep the stock `+0x4` write for this step so it
-  reproduces the recorded failure. Then boot with `azahi.smp=start`.
-- Expected:
-  - `CPU_START before ... +4=0x3fffe`
-  - after `smp_start_secondaries()`, `CPU_START after ... +4=0x3fffc` (or the
-    target bit cleared) and `AZAHI_SMP: 0/17 secondaries alive`.
-- Reading: `+4` going `0x3fffe -> 0x3fffc` with the reset register still correct
-  and locked and zero alive confirms hypothesis 1 is worth the `smp.c` fix. If
-  `+4` is unchanged and cores are still not alive, hypothesis 2 (firmware/SPTM
-  reset ownership) is the more likely story and a loader-only fix will not help.
-
-Step 3, only if step 2 supports hypothesis 1: apply the `smp.c` `+0x4` change,
-rebuild, chainload, and run `azahi.smp=start` again. Success is any
-`AZAHI_SMP: cpuN alive=1`, which would be the first secondary ever to execute
-loader code on this machine. Even one alive core settles the question.
-
-Abort criteria. Any SError, any hang, or a watchdog reset: stop, physically
-cycle, do not retry the same step. Never call unbounded `smp_call`/`smp_wait`,
-never chainload again after a failed start, and never boot Linux from a
-diagnostic build. Do not read the CoreSight or debug blocks (a prior read of
-`0x210010ff0` SErrored the machine).
-
-Rollback. Probe and start install nothing; a physical cycle returns the machine
-to the installed v7 image. If a fixed loader is ever installed to test step 3
-persistently, the installed v7 image is the rollback through the private
-Recovery procedure, exactly as for the PCIe and shutdown work.
-
-## Honest confidence
-
-I cannot prove which hypothesis is right without the machine. My best read is
-that hypothesis 1 is the most likely thing a loader can fix and is cheap to
-test, but hypothesis 2 is close behind and, if true, means secondaries need
-SPTM cooperation Linux cannot get offline. The probe in step 1 is read-only and
-decides most of this in one boot, which is why it comes first.
-
-## Orchestrator review changes (2026-09-25)
-
-- The probe dumped a second CPU_START bank at `pmgr + 0x2000000000`. Nothing
-  places a die-1 PMGR there on this SoC (the repo's other die-level PMGR
-  nodes sit at `+0x2100000000`), and the J714s has all 18 CPUs on die 0.
-  Reading an unmapped address can SError, which would defeat a read-only
-  probe. The dump is now die 0 only, and CPU nodes on other dies (the
-  restore-image template lists die-2 CPUs) are skipped with a log line.
-- Step 2 now states that the private `AZAHI_ONE_CORE` early return must be
-  removed first, and the call site is `kboot_boot`, where `azahi_pcie_init`
-  already runs.
-- One more observation for the diagnosis: iBoot's `+0x4` value `0x3fffe` is
-  bits 1 to 17, one bit per CPU in linear order. The stock
-  `1 << (4 * cluster + core)` formula only matches that for cluster 0, so on
-  these 6-core clusters it would name the wrong CPU for cores 6 to 17 even
-  if hypothesis 1 is fixed. CPU1, the core actually tried, maps correctly.
-
-## Follow-up: macOS core-start sequence compared (2026-09-25)
-
-Traced in the Mac17,9 kernelcache (26A428): `IOPMGR::enableCPUCore(cpu,
-entry)` (0xfffffe000c2d50dc) drops the entry argument and calls
-`ApplePMGR::enableCPUCore(cpu)` (0xfffffe000985bf4c), which calls
-`enableCPUCores(1 << cpu, true)` (0xfffffe000985bafc). That reaches
-`ApplePMGR::configMiscCores` (0xfffffe000985b3d4) through vtable slot
-`+0xd20`, which `AppleT6050PMGR` does not override.
-
-`configMiscCores` builds, from the requested cores only, one value for
-CPU_START `+0x4` per die and one value per cluster for `+0x8 + 4*n`, then
-writes them in that order. It writes `+0x4` even for a die with no requested
-cores (value 0), so `+0x4` behaves as a trigger register, not a plain enable
-mask.
-
-Consequences:
-
-- **Hypothesis 1 is unlikely.** For CPU1, macOS writes the same values the
-  stock loader writes (`0x2` to `+0x4`, then the cluster-0 bit to `+0x8`).
-  The recorded `0x3fffe -> 0x3fffc` readback fits the hardware accepting the
-  start request, which also fits CPU1's power domain reaching ACTIVE. The
-  failure happens after a start request that looks correct. Skipping or
-  OR-ing the `+0x4` write is not expected to help and is withdrawn as the
-  candidate fix.
-- **Real but secondary bug.** macOS takes each core's `+0x4` bit from
-  per-core data, and iBoot's `0x3fffe` is one bit per CPU in linear order.
-  The loader's `1 << (4 * cluster + core)` only matches that for cluster 0,
-  so cores 6 to 17 would get the wrong bit (earlier notes recorded the same
-  mask problem). Once a core can start at all, use the linear CPU index
-  (`6 * cluster + core` on this 6-core-cluster layout) for `+0x4`.
-- The remaining explanation is outside the PMGR start sequence, in how a
-  released core reaches its first instruction. This session does not
-  investigate that further. The read-only probe (step 1 above) is still the
-  right first hardware step: it records the reset-vector state per core
-  without starting anything.
+After actual loader entry works, Linux still needs the one-core argument and
+alive-core refusal changed, all CPU nodes retained in the DT, accessible
+spin-table release addresses, and WFI/WFIT handling reviewed. Those constraints
+are intentionally unchanged while reset remains unresolved. Success requires
+per-core Linux execution, beyond a PMGR power bit or a passing host test.

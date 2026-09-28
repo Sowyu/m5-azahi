@@ -286,7 +286,8 @@ static int sart_set_entry(struct apple_sart *sart, int index, u8 flags,
 	paddr >>= sart->ops->size_shift;
 	size >>= sart->ops->paddr_shift;
 
-	if (size > sart->ops->size_max)
+	/* Every backend writes the shifted address with writel(). */
+	if (paddr != (u32)paddr || size > sart->ops->size_max)
 		return -EINVAL;
 
 	sart->ops->set_entry(sart, index, flags, paddr, size);

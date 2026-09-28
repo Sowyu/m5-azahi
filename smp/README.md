@@ -1,38 +1,119 @@
 # T6050 secondary-CPU startup
 
-Linux on this M5 Pro runs on CPU0 only. All 17 other cores stay offline. This
-directory holds the offline diagnosis and a default-off loader diagnostic that
-one attended boot can use to tell the two live hypotheses apart.
+All-core startup remains unresolved. The last hardware result is CPU0 online,
+with the other 17 cores powered on by experiments but never observed entering
+the loader. Everything below was prepared offline. Nothing is installed.
 
-Full write-up: [../docs/audit-2026-09-25/smp.md](../docs/audit-2026-09-25/smp.md).
+## Prepared changes
 
-## What is here
+`t6050-start-guards.patch` applies to the archived standalone loader baseline
+and can be reviewed for the complete private loader tree. It keeps
+`AZAHI_ONE_CORE` and fixes these startup faults:
 
-- The loader diagnostic itself lives with the loader, not here:
-  `standalone-loader/m1n1-20260911/src/azahi_smp.c` and `.h`. It is default-off:
-  no `azahi.smp=` cmdline token means it does nothing.
-- `test-smp-diag.py`: host guards. Compiles the token parser out of the C and
-  checks it is word-bounded and default-off, and statically checks that probe
-  mode writes no hardware. No target access.
+- T6050 CPU_START and CPU_STOP masks use six cores per cluster. CPU6 uses bit
+  6, CPU12 uses bit 12, and CPU17 uses bit 17. Other chips retain their existing
+  mapping. The ADT `function-enable_core` arguments confirm all 18 masks.
+- A locked reset vector that differs from the loader entry now returns before
+  allocating a stack or writing registers. The old code printed a failure but
+  continued the start attempt. T6050 compares address bits 41:11, matching
+  iBoot's writer. The old mask missed a differing bit 11.
+- A T6050 start timeout keeps `target_cpu` and both reset stacks intact and
+  parks the boot CPU permanently. A late arrival cannot resume startup or
+  Linux handoff. This path deliberately avoids `panic()`, which reboots.
+- Invalid die/core combinations and a failed stack allocation return before
+  CPU-start writes. J714s accepts only die 0 and the matching linear CPU ID.
 
-## The short version
+These changes do not explain CPU1's failure. Corrected-mask starts for CPU6
+and CPU12 also failed in the historical experiments. This is prerequisite
+work, not a demonstrated SMP fix.
 
-The stock m1n1 CPU-start path brings up every secondary on M1 through M4. On
-T6050 the same code leaves the secondaries powered but not executing: PMGR
-shows the core active (PS_ACTUAL 0x100 to 0x1f0) but the core never runs loader
-code. This is the state the upstream initial T6050 support already reported
-(AsahiLinux/m1n1 PR #610) and the repo's own V1..V5 checkpoints recorded.
+The patch also adds `azahi_smp.o` to the private build. Copy the current
+`azahi_smp.c`, `azahi_smp.h`, and `azahi_standalone.c` from
+`standalone-loader/m1n1-20260911/src/` when integrating it. The public tree is
+incomplete and cannot produce a working image by itself.
 
-The M4 Pro success does not carry over. The M4 project (damsleth/wallace) starts
-all 14 secondaries with the same bare PMGR write, so SPTM being present is not
-by itself the blocker. Something specific to the T6050 reset path is.
+## Read-only diagnostic
 
-## Run the host test
+`azahi.smp=probe` now runs from the standalone entry before DT preparation.
+No token means no action. It validates J714s board identity, the PMGR range,
+and each of the 18 die-0 CPU addresses before reading their reset registers.
+Other dies are skipped. Malformed and duplicate tokens are refused.
+
+`azahi.smp=start` is now refused, with no CPU-start writes. The previous mode
+called a loop that resets the shared stack pointer and advances `target_cpu`
+after a timeout. The patch now prevents that on T6050. Calling it from
+`kboot_boot` was also too late, because DT preparation had already removed
+offline CPU nodes. A future start experiment still needs a separate entry
+and a new reset-release hypothesis. Do not remove the one-core guard to run
+the old instructions.
+
+Matching reset vectors alone do not establish who controls reset entry. A
+read-only MMIO probe can still fault on real hardware.
+
+## Verify offline
 
 ```sh
 python3 smp/test-smp-diag.py
 ```
 
-Needs a host C compiler (`cc`) and Python 3. It does not touch hardware and
-proves nothing about the target; it only stops the diagnostic from silently
-losing its default-off gate or growing a write in probe mode.
+Needs Python 3, a host C compiler with UndefinedBehaviorSanitizer, `patch`,
+and `trash-put`. Eight tests cover the actual diagnostic and patched
+start/stop functions against register mocks, plus build refusals. They cover all 18 masks, legacy
+mapping, register-write order, reset-vector refusal including bit 11,
+allocation failure, delayed arrival during timeout quarantine, default-off
+behavior, malformed tokens, register-layout checks and build refusals.
+Temporary files go to Trash.
+
+To cross-compile against a complete local m1n1 header tree:
+
+```sh
+python3 smp/build-offline.py --m1n1 /path/to/m1n1 --output /path/to/new-build
+```
+
+Pass `--cc /path/to/aarch64-linux-gcc` for a nonstandard toolchain. This applies
+the patches without fuzz and produces `smp.o`, `azahi_smp.o`, `pmgr.o`,
+`azahi_standalone.o` and a combined `loader-components.o`. It checks that the
+custom entry, diagnostic and PMGR lookup symbols resolve. `manifest.json`
+records commands and hashes. The PMGR base sources must match the pinned
+hashes from m1n1 commit `4184923ffb2dff079b384d6a32cc02142aa14572`; see
+[the lookup dependency](../standalone-loader/README.md#read-only-pmgr-lookup-dependency).
+It refuses an existing output directory, a host compiler or changed PMGR
+inputs and retains failed builds. All four objects compiled with AArch64 GCC
+16.1 and `-Werror`. The combined object still has ordinary m1n1 dependencies;
+it is not a boot image and nothing is installed.
+
+The [complete link check](../standalone-loader/README.md#complete-offline-link-check)
+also combines the archived main/payload integration with these sources and
+a pinned upstream tree. Both complete ELF files link without undefined
+symbols. That result does not supply the private payload or establish CPU
+startup on hardware.
+
+[The investigation](../docs/audit-2026-09-25/smp.md) records the remaining reset
+question and the iBoot/SPTM findings. Hardware validation still requires
+observing each core enter the loader, then all 18 CPUs executing Linux work.
+
+For offline firmware analysis, `decode-ibootdata.py` reads an already extracted
+T6050 iBootData 1.0 payload and reports its sequence records. It has no hardware
+access or execution mode. `python3 smp/test-ibootdata.py` runs three in-memory
+format/bounds tests. The investigation documents its supported layout and
+the distinction between reset-vector restoration and a new CPU startup fix.
+
+## Linux execution check prepared offline
+
+`check-linux-cpus.py` defaults to reporting readiness. On the pinned J714s
+kernel, after all 18 CPUs are online and available to the process, explicitly
+run the short execution check:
+
+```sh
+python3 smp/check-linux-cpus.py --run
+```
+
+It starts one process per CPU, pins each process, repeatedly checks the actual
+executing CPU with `sched_getcpu`, and hashes 16 MiB per CPU against a fixed
+known result. A missing worker, wrong CPU, bad hash, changed online state or
+timeout prevents `ALL_18_CPUS_EXECUTED`. This is a short per-core execution
+check, not an endurance, thermal, concurrency or sleep certification. It does
+not start offline CPUs, alter boot arguments or bypass the one-core guard.
+
+`python3 smp/test-linux-cpus.py` checks the refusal/aggregation paths and one
+actual worker on the host. Those host tests are not M5 hardware results.

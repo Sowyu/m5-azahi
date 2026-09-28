@@ -11,6 +11,7 @@ docs/audit-2026-09-25/tooling-loader.md.
 import hashlib
 import json
 from pathlib import Path
+import shutil
 import struct
 import subprocess
 import tempfile
@@ -72,7 +73,10 @@ def canonical(blob):
 
 
 def add_reboot_node(dtb):
-    with tempfile.TemporaryDirectory(prefix='azahi-shutdown-dt-') as temporary:
+    if not shutil.which('trash-put'):
+        raise RuntimeError('Install trash-cli: sudo apt-get install -y trash-cli')
+    temporary = tempfile.mkdtemp(prefix='azahi-shutdown-dt-')
+    try:
         dt = Path(temporary) / 'candidate.dtb'
         dt.write_bytes(dtb)
 
@@ -92,6 +96,8 @@ def add_reboot_node(dtb):
         subprocess.run(['fdtput', '-r', str(dt), NODE], check=True)
         if canonical(dt.read_bytes()) != canonical(dtb):
             raise RuntimeError('DT changed beyond the reboot node')
+    finally:
+        subprocess.run(['trash-put', temporary], check=True)
     # The loader stops unless 40 <= dt_len <= 65536 and fdt_totalsize == dt_len.
     if not 40 <= len(new) <= 65536 or new[:4] != b'\xd0\x0d\xfe\xed' or \
             struct.unpack_from('>I', new, 4)[0] != len(new):

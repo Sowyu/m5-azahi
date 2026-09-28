@@ -6,7 +6,7 @@
 struct fake {
 	spmi4_u32 reg[128];
 	unsigned int selected, writes, delays, calls;
-	int fail, busy, reject, pending, wrong_state;
+	int fail, busy, reject, pending, wrong_state, bad_selector, bad_size;
 };
 static int xfer(void *ctx, unsigned int op, unsigned int addr,
 		const spmi4_u8 *out, size_t outlen, spmi4_u8 *in, size_t inlen)
@@ -18,8 +18,12 @@ static int xfer(void *ctx, unsigned int op, unsigned int addr,
 	if (op == 0x80) { assert(outlen == 1); f->selected = out[0]; return 0; }
 	if (op == 0x60) {
 		assert(inlen == 1);
-		if (addr == 0) *in = f->selected | (f->busy ? 0x80 : 0);
-		else { assert(addr == 0x1f); *in = hpm_length(f->selected); }
+		if (addr == 0)
+			*in = f->bad_selector ? (f->selected ^ 1) : f->selected | (f->busy ? 0x80 : 0);
+		else {
+			assert(addr == 0x1f);
+			*in = f->bad_size == 2 ? 65 : hpm_length(f->selected) - (f->bad_size == 1);
+		}
 		return 0;
 	}
 	if (op == 0x20) {
@@ -77,5 +81,18 @@ int main(void)
 		assert(hpm_awake_once(&h, &s, 1) < 0); assert(calls == f.calls);
 	}
 	puts("PASS: transport, selector, rejected task, timeout and readback faults latch");
+	for (i = 0; i < 4; i++) {
+		f = initial(); h = io(&f);
+		f.busy = i == 0;
+		f.bad_selector = i == 1;
+		f.bad_size = i >= 2 ? i - 1 : 0;
+		assert(hpm_select(&h, 3) == (i == 0 ? -ETIMEDOUT : -EPROTO));
+		assert(h.failed && !f.writes);
+		assert(f.delays == (i == 0 ? 100 : 0));
+		calls = f.calls;
+		assert(hpm_select(&h, 3) == -EIO);
+		assert(f.calls == calls);
+	}
+	puts("PASS: selector timeout differs from malformed selector/length; both permanently latch");
 	return 0;
 }

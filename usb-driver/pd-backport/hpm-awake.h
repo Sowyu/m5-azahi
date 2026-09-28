@@ -60,7 +60,7 @@ static int hpm_select(struct hpm_io *h, unsigned int reg)
 		h->delay_ms(h->context, 10);
 	}
 	h->failed = 1;
-	return -ETIMEDOUT;
+	return i == 100 ? -ETIMEDOUT : -EPROTO;
 }
 static int hpm_read(struct hpm_io *h, unsigned int reg, spmi4_u32 *value)
 {

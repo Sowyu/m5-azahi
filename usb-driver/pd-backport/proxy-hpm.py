@@ -17,6 +17,7 @@ import argparse
 import ctypes as C
 import hashlib
 import json
+import os
 from pathlib import Path
 import signal
 import struct
@@ -41,11 +42,17 @@ class IO(C.Structure):
 
 
 def build_bridge():
+    if sys.platform == 'darwin':
+        suffix, shared_flags = 'dylib', ['-dynamiclib']
+    elif sys.platform.startswith('linux'):
+        suffix, shared_flags = 'so', ['-shared', '-fPIC']
+    else:
+        raise RuntimeError('Host bridge requires Linux or macOS')
     (HERE / 'build').mkdir(exist_ok=True)
     output = Path(tempfile.mkdtemp(prefix='host-bridge.', dir=HERE / 'build'))
-    library = output / 'bridge.dylib'
-    subprocess.run(['clang', '-std=c11', '-Wall', '-Wextra', '-Werror',
-                    '-O2', '-dynamiclib', str(HERE / 'spmi4-host-bridge.c'),
+    library = output / ('bridge.' + suffix)
+    subprocess.run([os.environ.get('CC', 'cc'), '-std=c11', '-Wall', '-Wextra', '-Werror',
+                    '-O2', *shared_flags, str(HERE / 'spmi4-host-bridge.c'),
                     '-o', str(library)], check=True)
     lib = C.CDLL(str(library))
     lib.azahi_spmi4_io_size.restype = C.c_size_t

@@ -1,0 +1,103 @@
+--- a/drivers/soc/apple/mailbox.c
++++ b/drivers/soc/apple/mailbox.c
+@@ -106,6 +106,7 @@
+ 	int ret;
+ 	u32 mbox_ctrl;
+ 	long t;
++	unsigned long seq;
+ 
+ 	spin_lock_irqsave(&mbox->tx_lock, flags);
+ 	mbox_ctrl = readl_relaxed(mbox->regs + mbox->hw->a2i_control);
+@@ -133,23 +134,32 @@
+ 		 * If the FIFO is already empty before the ack it will fire again
+ 		 * immediately after the ack.
+ 		 */
+-		if (mbox->hw->has_irq_controls) {
+-			writel_relaxed(mbox->hw->irq_bit_send_empty,
+-				       mbox->regs + mbox->hw->irq_ack);
++		seq = READ_ONCE(mbox->tx_seq);
++		mbox->tx_waiters++;
++		if (!mbox->tx_irq_unmasked) {
++			if (mbox->hw->has_irq_controls)
++				writel_relaxed(mbox->hw->irq_bit_send_empty,
++					       mbox->regs + mbox->hw->irq_ack);
++			mbox->tx_irq_unmasked = true;
++			enable_irq(mbox->irq_send_empty);
+ 		}
+-		enable_irq(mbox->irq_send_empty);
+-		reinit_completion(&mbox->tx_empty);
+ 		spin_unlock_irqrestore(&mbox->tx_lock, flags);
+ 
+-		t = wait_for_completion_interruptible_timeout(
+-			&mbox->tx_empty,
++		t = wait_event_interruptible_timeout(
++			mbox->tx_wait, READ_ONCE(mbox->tx_seq) != seq,
+ 			msecs_to_jiffies(APPLE_MBOX_TX_TIMEOUT));
+-		if (t < 0)
+-			return t;
+-		else if (t == 0)
+-			return -ETIMEDOUT;
+ 
+ 		spin_lock_irqsave(&mbox->tx_lock, flags);
++		mbox->tx_waiters--;
++		/* One cancelled sender must not mask another sender's wakeup. */
++		if (!mbox->tx_waiters && mbox->tx_irq_unmasked) {
++			disable_irq_nosync(mbox->irq_send_empty);
++			mbox->tx_irq_unmasked = false;
++		}
++		if (t <= 0) {
++			spin_unlock_irqrestore(&mbox->tx_lock, flags);
++			return t < 0 ? t : -ETIMEDOUT;
++		}
+ 		mbox_ctrl = readl_relaxed(mbox->regs + mbox->hw->a2i_control);
+ 	}
+ 
+@@ -175,9 +185,14 @@
+ 	 * it at the main controller again.
+ 	 */
+ 	spin_lock(&mbox->tx_lock);
+-	disable_irq_nosync(mbox->irq_send_empty);
+-	complete(&mbox->tx_empty);
++	if (mbox->tx_irq_unmasked) {
++		disable_irq_nosync(mbox->irq_send_empty);
++		mbox->tx_irq_unmasked = false;
++	}
++	/* A sequence change wakes every waiter without consuming a completion. */
++	WRITE_ONCE(mbox->tx_seq, mbox->tx_seq + 1);
+ 	spin_unlock(&mbox->tx_lock);
++	wake_up_all(&mbox->tx_wait);
+ 
+ 	return IRQ_HANDLED;
+ }
+@@ -362,7 +377,7 @@
+ 
+ 	spin_lock_init(&mbox->rx_lock);
+ 	spin_lock_init(&mbox->tx_lock);
+-	init_completion(&mbox->tx_empty);
++	init_waitqueue_head(&mbox->tx_wait);
+ 
+ 	irqname = devm_kasprintf(dev, GFP_KERNEL, "%s-recv", dev_name(dev));
+ 	if (!irqname)
+--- a/include/linux/soc/apple/mailbox.h
++++ b/include/linux/soc/apple/mailbox.h
+@@ -10,6 +10,7 @@
+ 
+ #include <linux/device.h>
+ #include <linux/types.h>
++#include <linux/wait.h>
+ 
+ /* encodes a single 96bit message sent over the single channel */
+ struct apple_mbox_msg {
+@@ -29,7 +30,11 @@
+ 	spinlock_t rx_lock;
+ 	spinlock_t tx_lock;
+ 
+-	struct completion tx_empty;
++	wait_queue_head_t tx_wait;
++	/* Protected by tx_lock; tx_seq is also read by the wait condition. */
++	unsigned long tx_seq;
++	unsigned int tx_waiters;
++	bool tx_irq_unmasked;
+ 
+ 	/** Receive callback for incoming messages */
+ 	void (*rx)(struct apple_mbox *mbox, struct apple_mbox_msg msg, void *cookie);

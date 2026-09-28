@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Host test for apply-safe-config.sh with a fake root and mocked commands."""
 import os
+import configparser
 from pathlib import Path
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -11,7 +13,13 @@ KERNEL = '7.0.13-400.asahi.fc44.aarch64+16k'
 MOCKS = {
     'uname': 'echo "${MOCK_KERNEL}"',
     # State lives in $AZAHI_ROOT/units: "<unit> <state>" lines.
-    'systemctl': r'''db=$AZAHI_ROOT/units; touch "$db"
+    'systemctl': r'''if [[ $1 = --root ]]; then
+    [[ $2 = "$AZAHI_ROOT" ]] || exit 9
+    shift 2
+elif [[ $REQUIRE_ROOT_ARG = 1 ]]; then
+    exit 9
+fi
+db=$AZAHI_ROOT/units; touch "$db"
 case $1 in
   is-enabled) grep -q "^$2 " "$db" && sed -n "s/^$2 //p" "$db" || { echo disabled; exit 1; } ;;
   mask|enable) [ "$1" = mask ] && s=masked || s=enabled; cmd=$1; shift
@@ -23,23 +31,24 @@ esac''',
 
 class ApplySafeConfig(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.root = Path(self.tmp.name) / 'root'
+        if not shutil.which('trash-put'):
+            raise RuntimeError('Install trash-cli: sudo apt-get install -y trash-cli')
+        self.tmp = Path(tempfile.mkdtemp(prefix='azahi-settings-test-'))
+        self.addCleanup(subprocess.run, ['trash-put', str(self.tmp)], check=True)
+        self.root = self.tmp / 'root'
         (self.root / 'proc/device-tree').mkdir(parents=True)
         (self.root / 'proc/device-tree/compatible').write_bytes(b'apple,j714s\0apple,t6050\0apple,arm-platform\0')
         (self.root / 'etc/dnf').mkdir(parents=True)
         (self.root / 'etc/dnf/dnf.conf').write_text('[main]\ngpgcheck=True\n')
-        bindir = Path(self.tmp.name) / 'bin'
+        bindir = self.tmp / 'bin'
         bindir.mkdir()
         for name, body in MOCKS.items():
             path = bindir / name
             path.write_text('#!/bin/bash\n' + body + '\n')
             path.chmod(0o755)
         self.env = dict(os.environ, AZAHI_ROOT=str(self.root), MOCK_KERNEL=KERNEL,
+                        REQUIRE_ROOT_ARG='1',
                         PATH=f'{bindir}:{os.environ["PATH"]}')
-
-    def tearDown(self):
-        self.tmp.cleanup()
 
     def run_script(self, *args, check=True):
         r = subprocess.run(['bash', str(SCRIPT), *args], env=self.env, text=True,
@@ -77,13 +86,13 @@ class ApplySafeConfig(unittest.TestCase):
         conf.write_text('[main]\nexcludepkgs=firefox,kernel*\n')
         self.run_script('--apply')
         self.assertEqual(conf.read_text(),
-                         '[main]\nexcludepkgs=firefox,kernel*,m1n1*,uboot-images*,update-m1n1\n')
+                         '[main]\nexcludepkgs=m1n1*,uboot-images*,update-m1n1,firefox,kernel*\n')
         backups = list(conf.parent.glob('dnf.conf.azahi-bak-*'))
         self.assertEqual(len(backups), 1)
         self.assertEqual(backups[0].read_text(), '[main]\nexcludepkgs=firefox,kernel*\n')
 
     def test_missing_dnf_conf(self):
-        (self.root / 'etc/dnf/dnf.conf').unlink()
+        subprocess.run(['trash-put', str(self.root / 'etc/dnf/dnf.conf')], check=True)
         self.run_script('--apply')
         self.assertEqual((self.root / 'etc/dnf/dnf.conf').read_text(),
                          '[main]\nexcludepkgs=kernel*,m1n1*,uboot-images*,update-m1n1\n')
@@ -110,15 +119,114 @@ class ApplySafeConfig(unittest.TestCase):
         self.assertFalse((self.root / 'etc/systemd').exists())
 
     def test_readme_typed_steps_match_script(self):
-        # The no-network commands in README.md must leave nothing to change.
+        # The short offline command blocks sleep, but must not claim DNF setup.
         readme = SCRIPT.with_name('README.md').read_text()
         block = readme.split('### Without network: type these as root\n\n```sh\n', 1)[1]
         block = block.split('```', 1)[0].replace('/etc/', f'{self.root}/etc/')
+        self.env['REQUIRE_ROOT_ARG'] = '0'  # Typed target commands have no test-root override.
         for _ in range(2):  # twice: typing it again must not duplicate anything
             subprocess.run(['bash', '-e', '-c', block], env=self.env, check=True,
                            capture_output=True)
+        status = self.status(self.run_script().stdout)
+        self.assertEqual(status.count('OK'), 5)
+        self.assertEqual(status.count('WOULD-CHANGE'), 2)
+        self.assertEqual((self.root / 'etc/dnf/dnf.conf').read_text(), '[main]\ngpgcheck=True\n')
+
+    def test_global_excludes_with_empty_indented_and_repository_options(self):
+        conf = self.root / 'etc/dnf/dnf.conf'
+        for value in ('', '   excludepkgs = \n', 'excludepkgs=firefox kernel*\n',
+                      'excludepkgs=firefox,\n    kernel*\n'):
+            with self.subTest(value=value):
+                repo = '[extras]\nexcludepkgs=kernel*,m1n1*,uboot-images*,update-m1n1\n'
+                conf.write_text('[main]\n' + value + repo)
+                self.run_script('--apply')
+                parsed = configparser.ConfigParser(interpolation=None)
+                parsed.read(conf)
+                tokens = set(parsed['main']['excludepkgs'].replace(',', ' ').split())
+                self.assertTrue({'kernel*', 'm1n1*', 'uboot-images*', 'update-m1n1'} <= tokens)
+                if 'firefox' in value:
+                    self.assertIn('firefox', tokens)
+                self.assertTrue(conf.read_text().endswith(repo))
+                self.assertEqual(set(self.status(self.run_script().stdout)), {'OK'})
+
+    def test_refuses_ambiguous_or_disabled_excludes_before_writes(self):
+        conf = self.root / 'etc/dnf/dnf.conf'
+        for body in ('excludepkgs=a\nexcludepkgs=b\n', 'disable_excludes=main\n',
+                     'disable_excludes=*\n', 'exclude=firefox\n'):
+            with self.subTest(body=body):
+                original = '[main]\n' + body
+                conf.write_text(original)
+                result = self.run_script('--apply', check=False)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn('REFUSED', result.stderr)
+                self.assertEqual(conf.read_text(), original)
+                self.assertFalse((self.root / 'etc/systemd').exists())
+                self.assertFalse((self.root / 'units').exists())
+
+    def test_repeated_changes_keep_every_backup(self):
+        date = self.tmp / 'bin/date'
+        date.write_text('#!/bin/sh\nprintf fixed-timestamp\n')
+        date.chmod(0o755)
+        conf = self.root / 'etc/dnf/dnf.conf'
+        originals = ['[main]\nexcludepkgs=firefox\n', '[main]\nexcludepkgs=chromium\n']
+        for original in originals:
+            conf.write_text(original)
+            self.run_script('--apply')
+        backups = list(conf.parent.glob('dnf.conf.azahi-bak-*'))
+        self.assertEqual(len(backups), 2)
+        self.assertEqual({p.read_text() for p in backups}, set(originals))
+
+    def test_dnf5_inherited_disable_excludes_refuses_before_changes(self):
+        drop = self.root / 'usr/share/dnf5/libdnf.conf.d/50-vendor.conf'
+        drop.parent.mkdir(parents=True)
+        conf = self.root / 'etc/dnf/dnf.conf'
+        original = conf.read_text()
+        for value in ('main', '"main"', "'*'", '$exclude_policy'):
+            with self.subTest(value=value):
+                drop.write_text('[main]\ndisable_excludes=' + value + '\n')
+                result = self.run_script('--apply', check=False)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn('REFUSED', result.stderr)
+                self.assertEqual(conf.read_text(), original)
+                self.assertFalse((self.root / 'etc/systemd').exists())
+                self.assertFalse((self.root / 'units').exists())
+
+    def test_dnf5_dropin_order_masks_and_main_override(self):
+        vendor = self.root / 'usr/share/dnf5/libdnf.conf.d/50-policy.conf'
+        user = self.root / 'etc/dnf/libdnf5.conf.d/50-policy.conf'
+        vendor.parent.mkdir(parents=True)
+        user.parent.mkdir(parents=True)
+        vendor.write_text('[main]\ndisable_excludes=*\n')
+        user.write_text('[main]\ndisable_excludes=extras\n')
+        self.run_script()  # Same filename: user file masks the vendor file.
+        later = vendor.with_name('90-policy.conf')
+        later.write_text('[main]\ndisable_excludes=main\n')
+        self.assertNotEqual(self.run_script('--apply', check=False).returncode, 0)
+        self.assertFalse((self.root / 'etc/systemd').exists())
+        conf = self.root / 'etc/dnf/dnf.conf'
+        conf.write_text('[main]\ndisable_excludes=\n')
+        self.run_script('--apply')  # Main file loads after every drop-in.
+        self.assertIn('disable_excludes=\n', conf.read_text())
         self.assertEqual(set(self.status(self.run_script().stdout)), {'OK'})
-        self.assertEqual((self.root / 'etc/dnf/dnf.conf').read_text().count('excludepkgs'), 1)
+
+    def test_quoted_values_keep_quotes_and_detect_disabled_policy(self):
+        conf = self.root / 'etc/dnf/dnf.conf'
+        for value in ('"main"', "'*'", '$exclude_policy'):
+            conf.write_text('[main]\ndisable_excludes=' + value + '\n')
+            self.assertNotEqual(self.run_script('--apply', check=False).returncode, 0)
+            self.assertFalse((self.root / 'etc/systemd').exists())
+        for quote in ('"', "'"):
+            for existing in ('firefox', 'firefox,\n    kernel*'):
+                conf.write_text('[main]\nexcludepkgs=' + quote + existing + quote + '\n')
+                self.run_script('--apply')
+                value = configparser.ConfigParser(interpolation=None)
+                value.read(conf)
+                text = value['main']['excludepkgs']
+                self.assertEqual(text[0], quote)
+                self.assertEqual(text[-1], quote)
+                tokens = set(text[1:-1].replace(',', ' ').split())
+                self.assertTrue({'firefox', 'kernel*', 'm1n1*', 'uboot-images*', 'update-m1n1'} <= tokens)
+                self.assertEqual(set(self.status(self.run_script().stdout)), {'OK'})
 
     def test_unknown_argument(self):
         self.assertEqual(self.run_script('--force', check=False).returncode, 2)

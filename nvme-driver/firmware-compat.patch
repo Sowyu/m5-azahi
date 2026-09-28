@@ -1,0 +1,127 @@
+--- a/nvme-driver/apple.c
++++ b/nvme-driver/apple.c
+@@ -114,8 +114,6 @@
+ #define APPLE_ANS_BOOT_STATUS	 0x1300
+ #define APPLE_ANS_BOOT_STATUS_OK 0xde71ce55
+ 
+-#define APPLE_ANS_UNKNOWN_CTRL	 0x24008
+-#define APPLE_ANS_PRP_NULL_CHECK BIT(11)
+ 
+ #define APPLE_ANS_LINEAR_SQ_CTRL 0x24908
+ #define APPLE_ANS_LINEAR_SQ_EN	 BIT(0)
+@@ -387,13 +385,15 @@
+ 	u32 tag = nvme_tag_from_cid(cmd->common.command_id);
+ 	struct apple_nvmmu_tcb *tcb = &q->tcbs[tag];
+ 
+-	tcb->opcode = cmd->common.opcode;
++	tcb->opcode = 0;
+ 	tcb->prp1 = cmd->common.dptr.prp1;
+ 	tcb->prp2 = cmd->common.dptr.prp2;
+ 	tcb->length = cmd->rw.length;
+ 	tcb->command_id = tag;
+ 
+-	if (nvme_is_write(cmd))
++	if (!cmd->common.dptr.prp1)
++		tcb->dma_flags = 0;
++	else if (nvme_is_write(cmd))
+ 		tcb->dma_flags = APPLE_ANS_TCB_DMA_TO_DEVICE;
+ 	else
+ 		tcb->dma_flags = APPLE_ANS_TCB_DMA_FROM_DEVICE;
+@@ -1250,16 +1250,7 @@
+ 		writel(anv->hw->max_queue_depth - 1,
+ 			anv->mmio_nvmmu + APPLE_NVMMU_NUM_TCBS);
+ 
+-		/*
+-		 * This is probably a chicken bit: without it all commands
+-		 * where any PRP is set to zero (including those that don't use
+-		 * that field) fail and the co-processor complains about
+-		 * "completed with err BAD_CMD-" or a "NULL_PRP_PTR_ERR" in the
+-		 * syslog
+-		 */
+-		writel(readl(anv->mmio_nvme + APPLE_ANS_UNKNOWN_CTRL) &
+-			~APPLE_ANS_PRP_NULL_CHECK,
+-			anv->mmio_nvme + APPLE_ANS_UNKNOWN_CTRL);
++
+ 	}
+ 
+ 	/* Setup the admin queue */
+@@ -1740,7 +1731,8 @@
+ 	}
+ 
+ 	ret = nvme_init_ctrl(&anv->ctrl, anv->dev, &nvme_ctrl_ops,
+-			     NVME_QUIRK_SKIP_CID_GEN | NVME_QUIRK_IDENTIFY_CNS);
++			     NVME_QUIRK_SKIP_CID_GEN | NVME_QUIRK_IDENTIFY_CNS |
++			     NVME_QUIRK_ADMIN_PAGE_ALIGN);
+ 	if (ret) {
+ 		dev_err_probe(dev, ret, "Failed to initialize nvme_ctrl");
+ 		goto put_dev;
+@@ -1757,6 +1749,9 @@
+ {
+ 	struct apple_nvme *anv;
+ 	int ret;
++
++	if (!nvme_azahi_admin_page_align_v1())
++		return -EOPNOTSUPP;
+ 
+ 	anv = apple_nvme_alloc(pdev);
+ 	if (IS_ERR(anv))
+--- a/nvme-driver/core.c
++++ b/nvme-driver/core.c
+@@ -2065,6 +2065,13 @@
+ 	return ctrl->max_hw_sectors / (NVME_CTRL_PAGE_SIZE >> SECTOR_SHIFT) + 1;
+ }
+ 
++/* Require the paired Apple candidate to resolve this symbol before probing. */
++bool nvme_azahi_admin_page_align_v1(void)
++{
++	return true;
++}
++EXPORT_SYMBOL_GPL(nvme_azahi_admin_page_align_v1);
++
+ static void nvme_set_ctrl_limits(struct nvme_ctrl *ctrl,
+ 		struct queue_limits *lim, bool is_admin)
+ {
+@@ -2074,7 +2081,10 @@
+ 	lim->max_integrity_segments = ctrl->max_integrity_segments;
+ 	lim->virt_boundary_mask = ctrl->ops->get_virt_boundary(ctrl, is_admin);
+ 	lim->max_segment_size = UINT_MAX;
+-	lim->dma_alignment = 3;
++	if (is_admin && (ctrl->quirks & NVME_QUIRK_ADMIN_PAGE_ALIGN))
++		lim->dma_alignment = NVME_CTRL_PAGE_SIZE - 1;
++	else
++		lim->dma_alignment = 3;
+ }
+ 
+ static bool nvme_update_disk_info(struct nvme_ns *ns, struct nvme_id_ns *id,
+--- a/nvme-driver/nvme.h
++++ b/nvme-driver/nvme.h
+@@ -178,6 +178,11 @@
+ 	 * Align dma pool segment size to 512 bytes
+ 	 */
+ 	NVME_QUIRK_DMAPOOL_ALIGN_512		= (1 << 22),
++
++	/*
++	 * Admin queue DMA buffers must be page aligned
++	 */
++	NVME_QUIRK_ADMIN_PAGE_ALIGN		= (1 << 23),
+ };
+ 
+ static inline char *nvme_quirk_name(enum nvme_quirks q)
+@@ -229,6 +234,8 @@
+ 		return "broken_msi";
+ 	case NVME_QUIRK_DMAPOOL_ALIGN_512:
+ 		return "dmapool_align_512";
++	case NVME_QUIRK_ADMIN_PAGE_ALIGN:
++		return "admin_page_align";
+ 	}
+ 
+ 	return "unknown";
+@@ -956,6 +963,8 @@
+ 	/* Retry command when NVME_STATUS_DNR is not set in the result */
+ 	NVME_SUBMIT_RETRY = (__force nvme_submit_flags_t)(1 << 3),
+ };
++
++bool nvme_azahi_admin_page_align_v1(void);
+ 
+ int nvme_submit_sync_cmd(struct request_queue *q, struct nvme_command *cmd,
+ 		void *buf, unsigned bufflen);

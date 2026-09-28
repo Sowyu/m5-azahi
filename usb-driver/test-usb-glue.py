@@ -4,11 +4,24 @@
 Checks control flow only, not kernel API correctness or physical teardown.
 """
 from pathlib import Path
+from contextlib import contextmanager
+import shutil
 import subprocess
 import tempfile
 import unittest
 
 HERE = Path(__file__).resolve().parent
+
+
+@contextmanager
+def temporary_directory(prefix):
+    if not shutil.which('trash-put'):
+        raise RuntimeError('Install trash-cli: sudo apt-get install -y trash-cli')
+    path = Path(tempfile.mkdtemp(prefix=prefix))
+    try:
+        yield path
+    finally:
+        subprocess.run(['trash-put', str(path)], check=True)
 
 
 def function(source, signature):
@@ -61,7 +74,7 @@ int main(void) {
     return 0;
 }
 '''
-        with tempfile.TemporaryDirectory(prefix='usb-remove-test-') as temporary:
+        with temporary_directory(prefix='usb-remove-test-') as temporary:
             path = Path(temporary)
             (path / 'test.c').write_text(harness + remove + cases)
             subprocess.run(['/usr/bin/cc', '-std=c11', '-Wall', '-Werror',
@@ -128,7 +141,7 @@ int main(void) {
     return 0;
 }
 '''
-        with tempfile.TemporaryDirectory(prefix='usb-glue-test-') as temporary:
+        with temporary_directory(prefix='usb-glue-test-') as temporary:
             path = Path(temporary)
             (path / 'test.c').write_text(harness + init + cases)
             subprocess.run(['/usr/bin/cc', '-std=c11', '-Wall', '-Werror', '-Wno-unused-function',
@@ -228,7 +241,7 @@ int main(void) {
     return 0;
 }
 '''
-        with tempfile.TemporaryDirectory(prefix='usb-phy-test-') as temporary:
+        with temporary_directory(prefix='usb-phy-test-') as temporary:
             path = Path(temporary)
             (path / 'test.c').write_text(harness + defines + '\n' + structs + '\n' +
                                          bodies + cases)

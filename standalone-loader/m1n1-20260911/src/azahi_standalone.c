@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MIT */
 /* Private J714s one-core boot. No NVMe commands or persistent loader writes. */
 #include "azahi_standalone.h"
+#include "azahi_smp.h"
 #include "adt.h"
 #include "dapf.h"
 #include "kboot.h"
@@ -29,6 +30,31 @@ static int stop(const char *reason)
 {
     printf("AZAHI_STANDALONE_STOP: %s; no kernel handoff\n", reason);
     return -1;
+}
+
+/* Required boot options must occur exactly once, before the init arguments. */
+static bool bootarg_is(const char *args, const char *key, const char *value)
+{
+    size_t key_len = strlen(key), value_len = strlen(value);
+    bool found = false;
+    while (*args) {
+        while (*args == ' ' || *args == '\t')
+            args++;
+        const char *end = args;
+        while (*end && *end != ' ' && *end != '\t')
+            end++;
+        size_t len = end - args;
+        if (len == 2 && !memcmp(args, "--", 2))
+            break;
+        if (len >= key_len && !memcmp(args, key, key_len)) {
+            if (found || len != key_len + value_len ||
+                memcmp(args + key_len, value, value_len))
+                return false;
+            found = true;
+        }
+        args = end;
+    }
+    return found;
 }
 
 static bool reg_matches(const char *path, unsigned index, u64 base, u64 minimum_size)
@@ -116,8 +142,8 @@ int azahi_standalone_run(void)
         tinf_crc32(initrd, h->initrd_len) != h->initrd_crc)
         return stop("bundle CRC mismatch");
     if (args[h->args_len - 1] || strlen(args) != h->args_len - 1 ||
-        !strstr(args, "azahi.ssd_root=1") || !strstr(args, "maxcpus=1") ||
-        !strstr(args, "root=PARTUUID=PRIVATE-LINUX-PARTUUID-NOT-CONFIGURED") ||
+        !bootarg_is(args, "azahi.ssd_root=", "1") || !bootarg_is(args, "maxcpus=", "1") ||
+        !bootarg_is(args, "root=", "PARTUUID=PRIVATE-LINUX-PARTUUID-NOT-CONFIGURED") ||
         fdt_check_header(fdt) || fdt_totalsize(fdt) != h->dt_len ||
         fdt_node_check_compatible(fdt, 0, "apple,j714s"))
         return stop("boot arguments or DT identity");
@@ -142,6 +168,8 @@ int azahi_standalone_run(void)
     for (unsigned i = 1; i < 18; i++)
         if (smp_is_alive(i))
             return stop("secondary unexpectedly alive");
+    if (azahi_smp_diag(args) < 0)
+        return stop("SMP diagnostic refused");
     if (prepare_ans() || dapf_init("/arm-io/dart-mtp", 1) || kboot_prepare_dt((void *)fdt))
         return stop("hardware/DT preparation failed");
     printf("AZAHI_STANDALONE_HANDOFF: fixed SSD root, one CPU\n");

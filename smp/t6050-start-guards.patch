@@ -1,0 +1,148 @@
+--- a/Makefile
++++ b/Makefile
+@@ -123,6 +123,7 @@
+ 
+ OBJECTS := \
+ 	azahi_standalone.o \
++	azahi_smp.o \
+ 	adt.o \
+ 	afk.o \
+ 	aic.o \
+--- a/src/smp.c
++++ b/src/smp.c
+@@ -111,11 +111,45 @@
+     return;
+ }
+ 
++/* T6050 has three six-core clusters. CPU_START uses a linear bit per core,
++ * as recorded in the ADT function-enable_core arguments, not a four-core stride.
++ * Keep the legacy formula unchanged on other chips.
++ */
++static u32 smp_core_mask(int cluster, int core)
++{
++    if (cluster < 0 || core < 0)
++        return 0;
++    unsigned bit;
++    if (chip_id == T6050) {
++        if (cluster >= 3 || core >= 6)
++            return 0;
++        bit = 6U * cluster + core;
++    } else {
++        if (cluster >= 8 || core >= 32 - 4 * cluster)
++            return 0;
++        bit = 4U * cluster + core;
++    }
++    return 1U << bit;
++}
++
++/* A delayed T6050 core can still consume target_cpu and the reset stack.
++ * Keep both intact, and prevent another start or handoff until a power cycle.
++ * panic() is unsuitable here because it reboots into the retained state.
++ */
++static __attribute__((noreturn)) void smp_start_quarantine(int index)
++{
++    printf("AZAHI_SMP_STOP: CPU %d timed out; reset context retained; power cycle required\n",
++           index);
++    sysop("dsb sy");
++    for (;;)
++        sysop("wfe");
++}
++
+ static void smp_start_cpu(int index, int die, int cluster, int core, u64 impl, u64 cpu_start_base)
+ {
+     int i;
+ 
+-    if (index >= MAX_CPUS)
++    if (index < 0 || index >= MAX_CPUS)
+         return;
+ 
+     if (has_el3() && index >= MAX_EL3_CPUS)
+@@ -124,18 +158,32 @@
+     if (spin_table[index].flag)
+         return;
+ 
+-    if (!cpu_features->apple_sysregs_unlocked &&
+-        (read64(impl) & RVBAR_ADDR) != (u64)_vectors_start) {
+-        printf("Failed! \n    RVBAR (=0x%lx) is locked and differs from entry point (=0x%lx)\n",
+-               read64(impl) & RVBAR_ADDR, (u64)_vectors_start);
++    u32 core_mask = smp_core_mask(cluster, core);
++    if (!core_mask || (chip_id == T6050 && (die != 0 || index != 6 * cluster + core)))
++        return;
++
++    /* T6050 iBoot writes address bits 41:11. Bit 11 selects a distinct entry. */
++    u64 rvbar_mask = chip_id == T6050 ? GENMASK(41, 11) : RVBAR_ADDR;
++    if (!cpu_features->apple_sysregs_unlocked) {
++        u64 rvbar = read64(impl) & rvbar_mask;
++        if (rvbar != (u64)_vectors_start) {
++            printf("Failed! \n    RVBAR (=0x%lx) is locked and differs from entry point (=0x%lx)\n",
++                   rvbar, (u64)_vectors_start);
++            return;
++        }
+     }
+ 
+     printf("Starting CPU %d (%d:%d:%d)... ", index, die, cluster, core);
+ 
++    u8 *stack = memalign(0x4000, SECONDARY_STACK_SIZE);
++    if (!stack) {
++        printf("Failed to allocate secondary stack\n");
++        return;
++    }
++
+     memset(&spin_table[index], 0, sizeof(struct spin_table));
+-
+     target_cpu = index;
+-    secondary_stacks[index] = memalign(0x4000, SECONDARY_STACK_SIZE);
++    secondary_stacks[index] = stack;
+     if (has_el3()) {
+         secondary_stacks_el3[index] = memalign(0x4000, SECONDARY_STACK_SIZE);
+         _reset_stack = secondary_stacks_el3[index] + SECONDARY_STACK_SIZE; // EL3
+@@ -158,7 +206,7 @@
+ 
+     // Some kind of system level startup/status bit
+     // Without this, IRQs don't work
+-    write32(cpu_start_base + 0x4, 1 << (4 * cluster + core));
++    write32(cpu_start_base + 0x4, core_mask);
+ 
+     // Actually start the core
+     write32(cpu_start_base + 0x8 + 4 * cluster, 1 << core);
+@@ -170,10 +218,13 @@
+         udelay(1000);
+     }
+ 
+-    if (i >= 100)
++    if (i >= 100) {
++        if (chip_id == T6050)
++            smp_start_quarantine(index);
+         printf("Failed!\n");
+-    else
++    } else {
+         printf("  Started.\n");
++    }
+ 
+     _reset_stack = dummy_stack + DUMMY_STACK_SIZE;
+     _reset_stack_el1 = dummy_stack_el1 + DUMMY_STACK_SIZE;
+@@ -184,18 +235,22 @@
+ {
+     int i;
+ 
+-    if (index >= MAX_CPUS)
++    if (index < 0 || index >= MAX_CPUS)
+         return;
+ 
+     if (!spin_table[index].flag)
+         return;
+ 
++    u32 core_mask = smp_core_mask(cluster, core);
++    if (!core_mask || (chip_id == T6050 && (die != 0 || index != 6 * cluster + core)))
++        return;
++
+     printf("Stopping CPU %d (%d:%d:%d)... ", index, die, cluster, core);
+ 
+     cpu_start_base += die * PMGR_DIE_OFFSET;
+ 
+     // Request CPU stop
+-    write32(cpu_start_base + 0x0, 1 << (4 * cluster + core));
++    write32(cpu_start_base + 0x0, core_mask);
+ 
+     u64 dsleep = deep_sleep;
+     // Put the CPU to sleep

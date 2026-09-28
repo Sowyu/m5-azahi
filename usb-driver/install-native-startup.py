@@ -20,7 +20,7 @@ PINS = {
 }
 # The root-executed script and unit are pinned too; update only after review.
 SOURCE_PINS = {
-    'start-native-usb.sh': 'f2f777d2b9a6d8b52e0d2ab28f162f05d6de8e6fc0377b1a711f440dd9afd162',
+    'start-native-usb.sh': 'ac1b013015e1032100d37e98d3edc3630cef3dcf936007a79f39a34c6a4508d0',
     'azahi-usb.service': 'e2c6583a8c6378d61623702af4f0de5d6f68b24a34845d2c0a53946b607cc15f',
 }
 

@@ -31,9 +31,9 @@ Line numbers are for the files as they are after this pass.
 | M5 | :401 | REJECTED | Design preference. A phase-0 error does return early. Bytes are hardware-verified and pinned by a test. |
 | M6 | :476 | CONFIRMED-FIXED | Size check before the header dereference. |
 | L1 | :900 | CONFIRMED-FIXED | Zero-length product block rejected. |
-| L2 | :880 | CONFIRMED-NOT-FIXED | Read stays inside the packet buffer; a stricter check could drop the real afe-reset request. |
+| L2 | init GPIO block | FIXED, 2026-09-28 candidate | A short block could borrow sibling bytes as its GPIO request. The parser now checks the block length; host fixtures reproduce the old corruption. No live J714s packet validates this change. |
 | L3 | :1142 | CONFIRMED-FIXED | Short packets dropped before the sub-header is read. |
-| L4 | :21 | CONFIRMED-NOT-FIXED | Portability only; needs a build-script change that cannot be tested here. |
+| L4 | :21 | FIXED, 2026-09-28 | Private vendor-ID header replaced with the public constant. Exact-kernel Linux builder and host tests pass. |
 | L5 | :771 | CONFIRMED-NOT-FIXED | Clearing the flag would allow a repeat enable, new hardware interaction. |
 | L6 | :1274 | Partly fixed | Probe error-path leak fixed; the rest follows from having no teardown. |
 | L7 | :784 | CONFIRMED-NOT-FIXED | Bounded leak; freeing the old copy would race `dchid_parse()`. |
@@ -88,7 +88,7 @@ Line numbers are for the files as they are after this pass.
 | L8 (spmi4) | :121 | REJECTED | As L8. |
 | L19 | :111 | REJECTED | Required containment literal. |
 | L20 | hpm-once.c:18 | REJECTED | 0444 outputs, read by the startup script and its tests. |
-| L21 | hpm-awake.h:56-63 | CONFIRMED-NOT-FIXED | Real diagnostic flaw (mismatch reported as -ETIMEDOUT). Any change alters the hardware-verified module; proposed one-liner for the next deliberate rebuild: `return i == 100 ? -ETIMEDOUT : -EPROTO;`. |
+| L21 | hpm-awake.h | FIXED, 2026-09-28 candidate | Wrong selector/length returns -EPROTO, poll exhaustion -ETIMEDOUT. Poison behavior preserved; installed binary pins unchanged. |
 | L22 | spmi4-transport.h:161 | REJECTED | `in_len` is capped at 16 before this line; tests cover the ACK rule. |
 | L23 | test-spmi4.c:133 | REJECTED | The test builds `replies[]` itself, so a packing change fails. |
 | L24 | spmi4-host-bridge.c | REJECTED | No Kbuild references it; header functions are static. |
@@ -97,7 +97,7 @@ Line numbers are for the files as they are after this pass.
 
 | ID | Where | Verdict | Reason |
 | --- | --- | --- | --- |
-| H4 | apple.c:1160-1188 | CONFIRMED-NOT-FIXED (guard) | On timeout the controller goes RESETTING to DELETING and the disk is removed; it is not stuck. The suggested soft reset would stop RTKit first and hit the same refusal. |
+| H4 | apple.c reset/timeout paths | CONFIRMED-NOT-FIXED (guard) | Reset work refuses running J714s firmware and proceeds to removal if reached. A live admin timeout can deadlock earlier in synchronous queue deletion, before RESETTING; see the follow-up below. Do not bypass the runtime reset refusal. |
 | M21 | :869-905 | CONFIRMED-NOT-FIXED | No non-read opcode reaches media. A driver `set_disk_ro()` is overwritten by nvme core and would also affect the private rootguard build, which shares the hw struct. |
 | M22 | :881-892 | CONFIRMED-FIXED | Queue create/delete refused for ioctl passthrough (`NVME_REQ_USERCMD`). The audit's `blk_rq_is_passthrough()` would have blocked the driver's own commands. |
 | M23 | :1245 | CONFIRMED-NOT-FIXED | Readability only; 63 comes from the HV trace and the other sites are correct. |
@@ -307,14 +307,21 @@ No code change is justified yet. Ranked hypotheses:
    - Read-only check: once the phone enumerates in any mode, capture
      `power/usb2_hardware_lpm`, `power/usb2_lpm_besl`,
      `power/usb2_lpm_l1_timeout` under its `/sys/bus/usb/devices/` node, and
-     the "USB 2.0 Extension" block of `lsusb -v`. No file, or `disabled`,
-     rules this out.
+     the "USB 2.0 Extension" block of `lsusb -v`. The first file exposes
+     `usb2_hw_lpm_allowed`, not actual L1 state or the success of enabling it.
+     A missing file or disabled policy on a later ADB/Imaging enumeration
+     cannot rule out LPM during an earlier failed tethering enumeration.
    - Test (attended, no rebuild): before plugging, write the phone's
      VID:PID values with flag `k` (USB_QUIRK_NO_LPM) to
      `/sys/module/usbcore/parameters/quirks`, for example
-     `18d1:4ee1:k,18d1:4e11:k` plus the tethering PID once known. Pass:
-     SET_CONFIGURATION succeeds on repeated plugs. Rollback: write an empty
-     string, or reboot.
+     `18d1:4ee1:k,18d1:4e11:k` plus the tethering PID once known. Preserve the
+     existing parameter and other devices' entries. In this kernel dynamic
+     quirk flags XOR the static flags, so adding `k` to a device that already
+     has static NO_LPM would turn that protection off. Check the exact kernel
+     table first; the suggested Google IDs have no static entry there. Apply
+     only while the phone is unplugged. Pass: SET_CONFIGURATION succeeds on
+     repeated plugs. Rollback: restore the original parameter, then reconnect
+     at the next attended test, or reboot. These quirks apply at enumeration.
 2. eUSB2 repeater reset out of band by the HPM while the PHY keeps running.
    Upstream glue tears the PHY and DWC3 down on every CC event because the PD
    chip resets the repeater. Forced-host mode never sees those events. The
@@ -420,7 +427,98 @@ clang is not installed here. For the tests that hard-code it, a scratch
 The one proxy-hpm failure and `test-usb-candidate.py` need the `m1n1` Python
 package. The transfer and courier tests need private image fixtures.
 
+## Input protocol follow-up, 2026-09-28
+
+Two findings come from the same 26A428 Mac17,9 kernelcache described above.
+They are static analysis, with no live MTP packet capture or GPIO measurement.
+
+`AppleHIDTransportProtocolSCMFIFO::setReportGated` in
+`com.apple.driver.AppleHIDTransportFIFO` selects flag `0x80` for report type 2
+and `0x40` for the other accepted type at `0xfffffe00094904b4` through
+`0xfffffe00094904d0`. The Linux raw-request callback discarded `rtype` on
+SET_REPORT and always used `HID_OUTPUT_REPORT`. Its single-use helper is
+removed; the callback now passes `rtype` to `dchid_cmd()`, as GET_REPORT
+already did. This corrects feature writes without changing output writes.
+The host test checks both types, GET/SET buffer conventions and error returns;
+an output-only mutation fails. The exact kernel's `hid-magicmouse.c` skips
+`magicmouse_enable_multitouch()` for `BUS_HOST`, including MTP, so that command
+is not a supported explanation for the observed AFE startup failure.
+
+`AppleHIDTransportManagement::externalResourceActionGated` in
+`com.apple.driver.AppleHIDTransport` dispatches action 3 at
+`0xfffffe0009444b64` to `0xfffffe0009444fe8`. It supplies a 32-bit value 1 to
+the resource function, checks success, calls `IOSleep(50)` at
+`0xfffffe0009445128`, then supplies 0 to the same resource function at
+`0xfffffe000944521c`. The call stub at `0xfffffe000948a0e0` resolves to
+`__got._IOSleep`, confirming this is a millisecond sleep call.
+The candidate's `gpio_pulse_50ms` option selects this delay only on J714s and
+defaults off. It retains Linux's release attempt after an assertion error.
+The host test compiles the actual option declaration and handler, checks all
+model/option combinations, and injects errors on either edge. This supports
+an attended timing experiment; it does not establish a fixed trackpad.
+
+Apple's `handleConfigRequest` also reads a 20-byte prefix containing
+an 8-bit interface at offset 1, a 16-bit resource ID at offset 2, and a
+32-bit action at offset 4. It also reads reason and timestamp fields.
+Linux's five-byte `dchid_gpio_cmd` only examines the low bytes of resource ID
+and action and echoes the full packet. No saved live J714s request was found
+to verify its complete layout. That parser and its minimum length have not
+been widened on this evidence alone. The host GPIO fixture now uses a
+20-byte event with zero upper action/ID bytes and checks the entire echo.
+
+Reproduce either function inspection with `ipsw macho disass`,
+`--fileset-entry` set to the relevant component above, `--symbol` set to its
+mangled symbol from `ipsw macho info --symbols`, and `--force`. Use the
+26A428 kernelcache, since addresses differ in other builds. Extracted Apple
+code and disassembly remain outside the repository.
+
 ## Open risks
+
+The [2026-09-28 follow-up](../audit-2026-09-28.md) adds a shared transmit
+mutex to prevent packet fragments from different HID interfaces interleaving,
+and reports GPIO pulse-write failures instead of acknowledging success.
+Seven input host groups pass, including forced-overlap and report-type
+mutation tests, and the
+candidate builds against the recovered exact kernel devel RPM.
+
+GPIO lookup review: the archived J714s Linux DT puts `apple,afe-reset-gpios`
+on the transport node, matching `dchid_request_gpio()`'s parent-device lookup.
+Moving that lookup to the `multi-touch` child would be wrong for this DT.
+The separate probe preflight scans children and passes the full `-gpios`
+property as the consumer name; it does not validate these parent properties.
+The exact kernel's default `fw_devlink` implementation independently parses
+`-gpios` supplier links, but the live graph and boot overrides were not
+inspected. No probe-order or GPIO-provider change was made on that assumption.
+
+Storage follow-up, 2026-09-28: the earlier H4 wording overstated the guarantee
+that a timeout reaches removal. With the controller LIVE, firmware not
+crashed, CSTS ready without CFS, and the I/O queue enabled,
+`apple_nvme_timeout()` calls `apple_nvme_disable()` before `nvme_reset_ctrl()`.
+Disable synchronously submits DELETE_SQ and DELETE_CQ. The admin tag set has
+only one usable tag. If the timed-out request owns that tag, the same timeout
+worker waits for a second tag before it can cancel the first request. An I/O
+timeout can reach the same cycle if its deletion command also times out.
+The exact kernel's `nvme_submit_sync_cmd()` uses blocking allocation without
+`NVME_SUBMIT_NOWAIT`; this wait precedes the request-ready check.
+
+Moving reset work alone does not establish safe recovery. J714s still refuses
+runtime firmware reset, and cancelling requests before controller DMA has
+stopped could release buffers still used by hardware. No storage recovery
+sequence or write guard was changed. This is a confirmed source-level
+deadlock path, not evidence that it caused the recorded shutdown hang.
+
+The exact-kernel nine-module build now includes public ANS and SART candidates.
+The NVMe queue-count variable matches the kernel's `int *` API, removing its
+signedness warning. Submission tests exercise 4,096 opcode/caller/Save-bit/
+mapping combinations and confirm the sleep and public rootguard refusals.
+
+A separate SART test reproduced silent truncation of a shifted physical
+address wider than the 32-bit `writel()` argument. The shared entry helper now
+rejects that case before MMIO and releases the reserved slot. Two ASan/UBSan
+host groups cover all four backends, alignment, existing size limits, slot
+exhaustion and preservation of firmware entries. Four mutations fail their
+runtime assertions. This fixes a software encoding limit; it does not resolve
+M26's unknown narrower hardware field widths or establish safe DMA recovery.
 
 - Fix 1 is untested on hardware. Test A is the only validation. Until then
   the parameter must stay 0 on normal boots.
@@ -436,3 +534,14 @@ package. The transfer and courier tests need private image fixtures.
   use. M15 stands.
 - Every changed module needs a rebuild and a new pinned hash in the install
   bundle before it can be tested. Hash pins live outside this area.
+
+## SMC follow-up, 2026-09-28
+
+The battery-probe SRAM fault now has a transfer-width candidate supported by
+Apple's 26A428 implementation. The [SMC investigation](../../smc-driver/README.md)
+records symbol addresses, the pinned Linux source and reproduction commands.
+Its default-off J714s option uses 32-bit SRAM transfers. Reply lengths and
+key-info locking also receive host-tested corrections, and failed/atomic SMC
+states are refused before any normal request stages write data. These changes
+do not establish working battery, clock, lid events or charging controls.
+The existing SMC child-driver blacklist remains required.

@@ -1,5 +1,10 @@
 # Authenticated native access
 
+The latest recorded laptop state has no working tethering or remote route.
+The successes below are historical. A separate, untested
+[phone cable fallback](PHONE-CABLE.md) uses USB ADB to reach the existing
+loopback SSH service without requiring a tether network interface.
+
 This is a task-specific SSH relay for a native Linux laptop behind phone
 tethering NAT. It does not enable the helper's operating-system SSH login,
 expose a native root login on the LAN, or configure router/firewall forwarding.

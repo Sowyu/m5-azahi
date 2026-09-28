@@ -690,14 +690,15 @@ static inline void apple_nvme_handle_cqe(struct apple_nvme_queue *q,
 	__u16 command_id = READ_ONCE(cqe->command_id);
 	struct request *req;
 
-	if (anv->hw->has_lsq_nvmmu)
-		apple_nvmmu_inval(q, command_id);
-
 	req = nvme_find_rq(apple_nvme_queue_tagset(anv, q), command_id);
 	if (unlikely(!req)) {
 		dev_warn(anv->dev, "invalid id %d completed", command_id);
 		return;
 	}
+
+	/* Reject invalid completions before using their ID in an MMIO write. */
+	if (anv->hw->has_lsq_nvmmu)
+		apple_nvmmu_inval(q, nvme_tag_from_cid(command_id));
 
 	if (!nvme_try_complete_req(req, cqe->status, cqe->result) &&
 	    !blk_mq_add_to_batch(req, iob,
@@ -746,7 +747,7 @@ static bool apple_nvme_handle_cq(struct apple_nvme_queue *q, bool force)
 	bool found;
 	DEFINE_IO_COMP_BATCH(iob);
 
-	if (!READ_ONCE(q->enabled) && !force)
+	if (!smp_load_acquire(&q->enabled) && !force)
 		return false;
 
 	found = apple_nvme_poll_cq(q, &iob);
@@ -856,7 +857,7 @@ static blk_status_t apple_nvme_queue_rq(struct blk_mq_hw_ctx *hctx,
 	 * We should not need to do this, but we're still using this to
 	 * ensure we can drain requests on a dying queue.
 	 */
-	if (unlikely(!READ_ONCE(q->enabled)))
+	if (unlikely(!smp_load_acquire(&q->enabled)))
 		return BLK_STS_IOERR;
 
 	if (!nvme_check_ready(&anv->ctrl, req, true))
@@ -977,7 +978,7 @@ static void apple_nvme_disable(struct apple_nvme *anv, bool shutdown)
 	nvme_quiesce_io_queues(&anv->ctrl);
 
 	if (!dead) {
-		if (READ_ONCE(anv->ioq.enabled)) {
+		if (smp_load_acquire(&anv->ioq.enabled)) {
 			apple_nvme_remove_sq(anv);
 			apple_nvme_remove_cq(anv);
 		}
@@ -1130,13 +1131,13 @@ static void apple_nvme_init_queue(struct apple_nvme_queue *q)
 		memset(q->tcbs, 0, anv->hw->max_queue_depth
 			* sizeof(struct apple_nvmmu_tcb));
 	memset(q->cqes, 0, depth * sizeof(struct nvme_completion));
-	WRITE_ONCE(q->enabled, true);
-	wmb(); /* ensure the first interrupt sees the initialization */
+	/* Publish all queue initialization before readers observe enabled. */
+	smp_store_release(&q->enabled, true);
 }
 
 static void apple_nvme_reset_work(struct work_struct *work)
 {
-	unsigned int nr_io_queues = 1;
+	int nr_io_queues = 1;
 	int ret;
 	u32 boot_status, aqa;
 	struct apple_nvme *anv =
@@ -1807,6 +1808,11 @@ static void apple_nvme_remove(struct platform_device *pdev)
 	nvme_stop_ctrl(&anv->ctrl);
 	nvme_remove_namespaces(&anv->ctrl);
 	apple_nvme_disable(anv, true);
+	if (anv->ctrl.admin_q && !blk_queue_dying(anv->ctrl.admin_q)) {
+		/* Drain waiting requests and stop timeout work before releasing the queue. */
+		nvme_unquiesce_admin_queue(&anv->ctrl);
+		blk_mq_destroy_queue(anv->ctrl.admin_q);
+	}
 	nvme_uninit_ctrl(&anv->ctrl);
 
 	if (apple_rtkit_is_running(anv->rtk)) {

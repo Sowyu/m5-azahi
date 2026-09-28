@@ -67,14 +67,21 @@ The macOS AppleT6050PCIe kext maps the ADT `reg` entries by role (KC
 | Role | ADT reg index | CPU address | Linux name |
 | --- | --- | --- | --- |
 | ECAM | 0 | 0x1cb0000000 | config |
-| Common | 1 | 0x214000000 | rc |
-| GP PHY (PhyCommon = +0x4000) | 2 | 0x217000000 | (loader) |
-| PhyPhy | 3 | 0x217020000 | (loader) |
-| Axi2Af | 5 | 0x216000000 | (loader/iBoot) |
-| PcieClkgen | 6 | 0x215044000 | (unused at boot) |
-| port0 config | 16 | 0x210028000 | port0 |
-| port0 PHY glue | 18 | 0x217010000 | phy0 |
-| port0 intr2axi | 19 | 0x210024000 | (loader) |
+| Common | 1 | 0x414000000 | rc |
+| GP PHY (PhyCommon = +0x4000) | 2 | 0x417000000 | (loader) |
+| PhyPhy | 3 | 0x417020000 | (loader) |
+| Axi2Af | 5 | 0x416000000 | (loader/iBoot) |
+| PcieClkgen | 6 | 0x415044000 | (unused at boot) |
+| port0 config | 16 | 0x410028000 | port0 |
+| port0 PHY glue | 18 | 0x417010000 | phy0 |
+| port0 intr2axi | 19 | 0x410024000 | (loader) |
+
+Corrected 2026-09-28: the earlier table mislabeled raw ADT child addresses as
+CPU addresses. These apply `/arm-io`'s `+0x200000000` translation to the low
+window, matching the generated overlay. ECAM is already in an identity-mapped
+window. The loader uses `adt_get_reg` for translation and now checks both
+base and size before MMIO. It also validates complete local tunable arrays
+before enabling power, since the upstream tunable writer lacks range checks.
 
 The per-port config block uses the t602x layout, confirmed in KC
 `APCIECoreRCGen4Port`: PERST/reset 0x82c, RID2SID 0x3000, MSIMAP 0x3800, MSI
@@ -327,8 +334,9 @@ Stage 1, controller and port register bring-up, no endpoint power:
    still be intact and `dmesg | grep -i nvme` unchanged.
 3. Abort criteria: any NVMe error, any PMGR SError, or the loader poll timeouts
    (`GP PHY 100MHz refclk not ready`, `STATUS RUN timeout`, `lane pipe reset
-   status timeout`). The bounded timeouts mean the boot continues either way;
-   record which poll failed and stop.
+   status timeout`). The 2026-09-28 follow-up refuses kernel handoff on an
+   initialization failure. Record which step failed, then use a physical
+   power cycle and the preserved rollback. Do not retry in the same session.
 4. Capture: loader log, `lspci -nnvv` (config space of the root port),
    `dmesg | grep -iE 'pcie|dart|106b'`, and the fork's LINKSTS/STATUS line.
 

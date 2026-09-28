@@ -11,6 +11,13 @@ evidence and first-test plan.
 
 ## Files
 
+The 2026-09-28 local loader gate rejects partial and duplicate mode arguments,
+ignores tokens after `--`, and checks T6050/board 8/J714s before hardware
+access. Bring-up also refuses missing overlay nodes before MMIO, propagates
+tunable failures and prevents kernel handoff on initialization errors. The
+host tests and AArch64 compile pass. This does not validate the PCIe power
+sequence, and it is not installed.
+
 - `gen-pcie-dt.py` generates the overlay from the Apple ADT JSON (the JSON that
   `ipsw dtree --json` produces). The repo cannot ship the ADT, so the script
   takes its path as an argument.

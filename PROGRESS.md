@@ -1,5 +1,13 @@
 # Progress
 
+## 2026-09-28: offline fixes and exact-kernel builds
+
+No laptop access and nothing installed. The latest source changes, tests,
+recovered kernel build inputs and CPU firmware findings are in
+[the offline journal](docs/audit-2026-09-28.md). Source changes are collected in
+[PR #5](https://github.com/Sowyu/m5-azahi/pull/5). One working CPU and failed USB networking remain the last hardware
+state, recorded on 2026-09-13.
+
 ## 2026-09-25: offline audit, fixes and Wi-Fi PCIe groundwork (nothing installed)
 
 No hardware access. The hardware state below (2026-09-13) is still the last

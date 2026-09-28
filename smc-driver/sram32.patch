@@ -1,0 +1,239 @@
+--- a/drivers/mfd/macsmc.c
++++ b/drivers/mfd/macsmc.c
+@@ -43,8 +43,52 @@
+ #define SMC_RESULT			SMC_MSG
+ 
+ #define SMC_TIMEOUT_MS		500
+ 
++/* Offline J714s experiment. Keep child-driver blacklists until attended tests. */
++static bool sram32;
++module_param(sram32, bool, 0444);
++MODULE_PARM_DESC(sram32, "Use 32-bit SMC SRAM transfers on J714s (experimental)");
++
++/* The negotiated key buffer is 4 KiB; protocol payloads are at most 255 bytes. */
++static void apple_smc_copy_fromio(void *dst, const void __iomem *src, size_t count)
++{
++	if (!sram32) {
++		memcpy_fromio(dst, src, count);
++		return;
++	}
++
++	while (count) {
++		size_t chunk = min_t(size_t, count, sizeof(u32));
++		u32 value = __raw_readl(src);
++
++		memcpy(dst, &value, chunk);
++		src += sizeof(value);
++		dst += chunk;
++		count -= chunk;
++	}
++}
++
++static void apple_smc_copy_toio(void __iomem *dst, const void *src, size_t count)
++{
++	if (!sram32) {
++		memcpy_toio(dst, src, count);
++		return;
++	}
++
++	while (count) {
++		size_t chunk = min_t(size_t, count, sizeof(u32));
++		u32 value = 0;
++
++		/* Apple also zero-pads the final partial word before its 32-bit write. */
++		memcpy(&value, src, chunk);
++		__raw_writel(value, dst);
++		dst += sizeof(value);
++		src += chunk;
++		count -= chunk;
++	}
++}
++
+ static const struct mfd_cell apple_smc_devs[] = {
+ 	MFD_CELL_NAME("macsmc-input"),
+ 	MFD_CELL_NAME("macsmc-power"),
+ 	MFD_CELL_OF("macsmc-gpio", NULL, NULL, 0, 0, "apple,smc-gpio"),
+@@ -127,16 +171,20 @@
+ 		return -EINVAL;
+ 	if (wsize > SMC_MAX_SIZE)
+ 		return -EINVAL;
+ 
++	/* Refuse before staging a write into the atomic or failed SMC's buffer. */
++	if (smc->boot_stage != APPLE_SMC_INITIALIZED || smc->atomic_mode)
++		return -EIO;
++
+ 	if (rsize && wsize) {
+ 		cmd = SMC_MSG_RW_KEY;
+-		memcpy_toio(smc->shmem.iomem, wbuf, wsize);
++		apple_smc_copy_toio(smc->shmem.iomem, wbuf, wsize);
+ 		smc_size = rsize;
+ 		smc_wsize = wsize;
+ 	} else if (wsize && !rsize) {
+ 		cmd = SMC_MSG_WRITE_KEY;
+-		memcpy_toio(smc->shmem.iomem, wbuf, wsize);
++		apple_smc_copy_toio(smc->shmem.iomem, wbuf, wsize);
+ 		/*
+ 		 * Setting size to the length we want to write and wsize to 0
+ 		 * looks silly but that's how the SMC protocol works ¯\_(ツ)_/¯
+ 		 */
+@@ -160,12 +208,14 @@
+ 		 * message which is sent over the mailbox FIFO. Everything
+ 		 * bigger has to be copied from SRAM which is mapped as
+ 		 * Device memory.
+ 		 */
+-		if (rsize <= 4)
+-			memcpy(rbuf, &rdata, rsize);
++		if (ret > rsize)
++			return -EPROTO;
++		if (ret <= sizeof(rdata))
++			memcpy(rbuf, &rdata, ret);
+ 		else
+-			memcpy_fromio(rbuf, smc->shmem.iomem, rsize);
++			apple_smc_copy_fromio(rbuf, smc->shmem.iomem, ret);
+ 	}
+ 
+ 	return ret;
+ }
+@@ -199,8 +249,10 @@
+ {
+ 	int ret;
+ 
+ 	ret = apple_smc_cmd(smc, SMC_MSG_GET_KEY_BY_INDEX, index, 0, 0, key);
++	if (ret < 0)
++		return ret;
+ 
+ 	*key = swab32(*key);
+ 	return ret;
+ }
+@@ -210,11 +262,14 @@
+ {
+ 	u8 key_info[6];
+ 	int ret;
+ 
+-	ret = apple_smc_cmd(smc, SMC_MSG_GET_KEY_INFO, key, 0, 0, NULL);
++	/* The reply lives in shared SRAM until the next command overwrites it. */
++	guard(mutex)(&smc->mutex);
++
++	ret = apple_smc_cmd_locked(smc, SMC_MSG_GET_KEY_INFO, key, 0, 0, NULL);
+ 	if (ret >= 0 && info) {
+-		memcpy_fromio(key_info, smc->shmem.iomem, sizeof(key_info));
++		apple_smc_copy_fromio(key_info, smc->shmem.iomem, sizeof(key_info));
+ 		info->size = key_info[0];
+ 		info->type_code = get_unaligned_be32(&key_info[1]);
+ 		info->flags = key_info[5];
+ 	}
+@@ -247,8 +302,9 @@
+ int apple_smc_write_atomic(struct apple_smc *smc, smc_key key, const void *buf, size_t size)
+ {
+ 	guard(spinlock_irqsave)(&smc->lock);
+ 	u8 result;
++	unsigned int attempts = 0;
+ 	int ret;
+ 	u64 msg;
+ 
+ 	if (size > SMC_MAX_SIZE || size == 0)
+@@ -257,10 +313,13 @@
+ 	if (smc->boot_stage != APPLE_SMC_INITIALIZED)
+ 		return -EIO;
+ 	if (!smc->atomic_mode)
+ 		return -EIO;
+-
+-	memcpy_toio(smc->shmem.iomem, buf, size);
++	/* A failed wait does not cancel the command or release its SRAM buffer. */
++	if (smc->atomic_pending)
++		return -EBUSY;
++
++	apple_smc_copy_toio(smc->shmem.iomem, buf, size);
+ 	smc->msg_id = (smc->msg_id + 1) & 0xf;
+ 	msg = (FIELD_PREP(SMC_MSG, SMC_MSG_WRITE_KEY) |
+ 	       FIELD_PREP(SMC_SIZE, size) |
+ 	       FIELD_PREP(SMC_ID, smc->msg_id) |
+@@ -273,8 +332,13 @@
+ 		return ret;
+ 	}
+ 
+ 	while (smc->atomic_pending) {
++		/* IRQs are disabled here, so do not depend on jiffies advancing. */
++		if (attempts++ == SMC_TIMEOUT_MS * 10) {
++			dev_err(smc->dev, "Atomic command timed out (%llx)\n", msg);
++			return -ETIMEDOUT;
++		}
+ 		ret = apple_rtkit_poll(smc->rtk);
+ 		if (ret < 0) {
+ 			dev_err(smc->dev, "RTKit poll failed (%llx)", msg);
+ 			return ret;
+@@ -344,9 +408,13 @@
+ 		int ret;
+ 
+ 		smc->shmem.iova = message;
+ 		smc->shmem.size = SMC_SHMEM_SIZE;
+-		ret = apple_smc_rtkit_shmem_setup(smc, &smc->shmem);
++		/* The word-copy path must never issue an unaligned SRAM access. */
++		if (sram32 && !IS_ALIGNED(message, sizeof(u32)))
++			ret = -EINVAL;
++		else
++			ret = apple_smc_rtkit_shmem_setup(smc, &smc->shmem);
+ 		if (ret < 0) {
+ 			smc->boot_stage = APPLE_SMC_ERROR_NO_SHMEM;
+ 			dev_err(smc->dev, "Failed to initialize shared memory (%d)\n", ret);
+ 		} else {
+@@ -356,8 +424,13 @@
+ 	} else if (FIELD_GET(SMC_MSG, message) == SMC_MSG_NOTIFICATION) {
+ 		/* Handle these in the RTKit worker thread */
+ 		return false;
+ 	} else {
++		/* A late reply must not complete a different command or free its SRAM. */
++		if (FIELD_GET(SMC_ID, message) != READ_ONCE(smc->msg_id)) {
++			dev_warn_ratelimited(smc->dev, "Ignoring reply for an old command\n");
++			return true;
++		}
+ 		smc->cmd_ret = message;
+ 		if (smc->atomic_pending)
+ 			smc->atomic_pending = false;
+ 		else
+@@ -413,13 +486,21 @@
+ 	struct apple_smc *smc;
+ 	u32 count;
+ 	int ret;
+ 
++	if (sram32 && !of_machine_is_compatible("apple,j714s"))
++		return dev_err_probe(dev, -ENODEV, "sram32 is restricted to J714s\n");
++
+ 	smc = devm_kzalloc(dev, sizeof(*smc), GFP_KERNEL);
+ 	if (!smc)
+ 		return -ENOMEM;
+ 
+ 	mutex_init(&smc->mutex);
++	spin_lock_init(&smc->lock);
++	/* RTKit enables receive callbacks during initialization. */
++	init_completion(&smc->init_done);
++	init_completion(&smc->cmd_done);
++	BLOCKING_INIT_NOTIFIER_HEAD(&smc->event_handlers);
+ 	smc->dev = &pdev->dev;
+ 	smc->sram_base = devm_platform_get_and_ioremap_resource(pdev, 1, &smc->sram);
+ 	if (IS_ERR(smc->sram_base))
+ 		return dev_err_probe(dev, PTR_ERR(smc->sram_base), "Failed to map SRAM region");
+@@ -440,10 +521,11 @@
+ 	ret = apple_rtkit_start_ep(smc->rtk, SMC_ENDPOINT);
+ 	if (ret)
+ 		return dev_err_probe(dev, ret, "Failed to start SMC endpoint");
+ 
+-	init_completion(&smc->init_done);
+-	init_completion(&smc->cmd_done);
++	/* Discard completion state from before this explicit initialization. */
++	reinit_completion(&smc->init_done);
++	reinit_completion(&smc->cmd_done);
+ 
+ 	ret = apple_rtkit_send_message(smc->rtk, SMC_ENDPOINT,
+ 				       FIELD_PREP(SMC_MSG, SMC_MSG_INITIALIZE), NULL, false);
+ 	if (ret)
+@@ -459,9 +541,8 @@
+ 		return -EIO;
+ 	}
+ 
+ 	dev_set_drvdata(&pdev->dev, smc);
+-	BLOCKING_INIT_NOTIFIER_HEAD(&smc->event_handlers);
+ 
+ 	ret = apple_smc_read_u32(smc, SMC_KEY(#KEY), &count);
+ 	if (ret)
+ 		return dev_err_probe(smc->dev, ret, "Failed to get key count");

@@ -26,9 +26,8 @@
  *     clock-gates list), never the storage indices, and never disables anything.
  * Enabling is idempotent (macOS re-enables these on every boot too).
  *
- * Every poll here has a bounded timeout: on any failure the routine logs and
- * returns, and the boot continues to Linux (which then reports the port state
- * via the fork's link-timeout diagnostic). It cannot hang the attended boot.
+ * Every poll here has a bounded timeout. Errors return to kboot, which refuses
+ * kernel handoff. No teardown or retry follows a partially completed sequence.
  *
  * Not for upstream. Compile-checked against upstream m1n1; runs in the private
  * standalone-loader m1n1 tree alongside azahi_standalone.c.
@@ -36,6 +35,7 @@
 #include "adt.h"
 #include "libfdt/libfdt.h"
 #include "pmgr.h"
+#include "soc.h"
 #include "string.h"
 #include "tunables.h"
 #include "utils.h"
@@ -112,23 +112,89 @@ static const u32 gp_gate_index[] = { 1, 2, 9, 10, 11 };
 
 static u64 apcie_reg(int *path, int idx)
 {
+    /* Public J714s restore ADT. Do not let an unexpected map redirect this
+     * experiment onto another block, even when its board identity matches. */
+    static const struct { int index; u64 base, size; } ranges[] = {
+        {IDX_COMMON, 0x414000000UL, 0x4000},
+        {IDX_PHY, 0x417000000UL, 0x800000},
+        {IDX_PHYPHY, 0x417020000UL, 0x4000},
+        {IDX_PORT0, 0x410028000UL, 0x8000},
+        {IDX_GLUE0, 0x417010000UL, 0x4000},
+        {IDX_I2A0, 0x410024000UL, 0x4000},
+    };
     u64 addr, size;
     if (adt_get_reg(adt, path, "reg", idx, &addr, &size) < 0)
         return 0;
-    (void)size;
-    return addr;
+    for (size_t i = 0; i < sizeof(ranges) / sizeof(*ranges); i++) {
+        if (idx == ranges[i].index && addr == ranges[i].base && size == ranges[i].size)
+            return addr;
+    }
+    printf("azahi-pcie: unexpected apcie0 reg[%d] range; refusing\n", idx);
+    return 0;
+}
+
+static u64 pmgr_group1_base(void)
+{
+    int pmgr_path[8];
+    u64 base, size;
+    if (adt_path_offset_trace(adt, "/arm-io/pmgr", pmgr_path) < 0)
+        return 0;
+    if (adt_get_reg(adt, pmgr_path, "reg", 1, &base, &size) < 0 ||
+        base != 0x280900000UL || size != 0x58000) {
+        printf("azahi-pcie: unexpected PMGR group 1 range; refusing\n");
+        return 0;
+    }
+    return base;
 }
 
 /* Read the PMGR pwrstate register for a storage domain, without touching it. */
 static u32 pmgr_group1_ps(u32 offset)
 {
-    int pmgr_path[8];
-    u64 base;
-    if (adt_path_offset_trace(adt, "/arm-io/pmgr", pmgr_path) < 0)
-        return 0;
-    if (adt_get_reg(adt, pmgr_path, "reg", 1, &base, NULL) < 0)
-        return 0;
-    return read32(base + offset);
+    u64 base = pmgr_group1_base();
+    return base ? read32(base + offset) : 0;
+}
+
+/* tunables_apply_local_addr() checks encoding size but not register bounds,
+ * and can write earlier entries before finding a bad one. Validate the whole
+ * property before any GP power enable or controller access. Missing properties
+ * remain optional, as in the original experiment. */
+static bool local_tunables_valid(const char *path, const char *prop, u64 range_size)
+{
+    int node = adt_path_offset(adt, path);
+    if (node < 0)
+        return false;
+    u32 len;
+    const u32 *raw = adt_getprop(adt, node, prop, &len);
+    if (!raw)
+        return true;
+    if (!len || len % 24)
+        return false;
+    for (u32 i = 0; i < len / sizeof(*raw); i += 6) {
+        u32 offset = raw[i], width = raw[i + 1];
+        if ((width != 1 && width != 2 && width != 4 && width != 8) ||
+            offset % width || width > range_size || offset > range_size - width)
+            return false;
+    }
+    return true;
+}
+
+static bool pcie_preflight(int *path, bool bringup)
+{
+    const int indices[] = {IDX_COMMON, IDX_PHY, IDX_PHYPHY, IDX_PORT0, IDX_GLUE0, IDX_I2A0};
+    for (size_t i = 0; i < sizeof(indices) / sizeof(*indices); i++) {
+        if (!apcie_reg(path, indices[i]))
+            return false;
+    }
+    if (!pmgr_group1_base())
+        return false;
+    if (bringup &&
+        (!local_tunables_valid(APCIE_PATH, "apcie-common-tunables", 0x4000) ||
+         !local_tunables_valid(APCIE_PATH, "apcie-phy-tunables", 0x800000) ||
+         !local_tunables_valid(BRIDGE0_PATH, "apcie-config-tunables", 0x8000))) {
+        printf("azahi-pcie: invalid local tunables; refusing before MMIO\n");
+        return false;
+    }
+    return true;
 }
 
 static bool ssd_domains_active(void)
@@ -180,12 +246,14 @@ static int gp_controller_init(int *apcie_path)
         return -1;
 
     /* apcie-common-tunables -> Common (live ADT); harmless if the prop is absent. */
-    if (adt_getprop(adt, adt_path_offset(adt, APCIE_PATH), "apcie-common-tunables", NULL))
-        tunables_apply_local(APCIE_PATH, "apcie-common-tunables", IDX_COMMON);
+    if (adt_getprop(adt, adt_path_offset(adt, APCIE_PATH), "apcie-common-tunables", NULL) &&
+        tunables_apply_local(APCIE_PATH, "apcie-common-tunables", IDX_COMMON) < 0)
+        return -1;
     write32(common + COMMON_LANECFG, 0);   /* lane-cfg 0 */
 
-    if (adt_getprop(adt, adt_path_offset(adt, APCIE_PATH), "apcie-phy-tunables", NULL))
-        tunables_apply_local(APCIE_PATH, "apcie-phy-tunables", IDX_PHY);
+    if (adt_getprop(adt, adt_path_offset(adt, APCIE_PATH), "apcie-phy-tunables", NULL) &&
+        tunables_apply_local(APCIE_PATH, "apcie-phy-tunables", IDX_PHY) < 0)
+        return -1;
 
     if (poll32(phy + PHYCMN_OFF + PHYCMN_CLK, PHYCMN_CLK_100M, PHYCMN_CLK_100M, POLL_US)) {
         printf("azahi-pcie: GP PHY 100MHz refclk not ready\n");
@@ -257,8 +325,9 @@ static int port0_bringup(int *apcie_path)
     }
 
     /* apcie-config-tunables -> port CFG (live ADT). */
-    if (adt_getprop(adt, adt_path_offset(adt, BRIDGE0_PATH), "apcie-config-tunables", NULL))
-        tunables_apply_local_addr(BRIDGE0_PATH, "apcie-config-tunables", cfg);
+    if (adt_getprop(adt, adt_path_offset(adt, BRIDGE0_PATH), "apcie-config-tunables", NULL) &&
+        tunables_apply_local_addr(BRIDGE0_PATH, "apcie-config-tunables", cfg) < 0)
+        return -1;
 
     set32(cfg + PORT_APPCLK, PORT_APPCLK_EN);
 
@@ -332,16 +401,47 @@ static int fdt_enable_node(void *fdt, const char *path)
     return 0;
 }
 
+/* 0: absent, 1: probe, 2: bringup, -1: invalid or duplicate request. */
+static int pcie_mode(const char *cmdline)
+{
+    int mode = 0;
+    while (cmdline && *cmdline) {
+        while (*cmdline == ' ' || *cmdline == '\t')
+            cmdline++;
+        const char *end = cmdline;
+        while (*end && *end != ' ' && *end != '\t')
+            end++;
+        size_t len = end - cmdline;
+        if (len == 2 && !strncmp(cmdline, "--", 2))
+            break;
+        if (len >= 11 && !strncmp(cmdline, "azahi.pcie=", 11)) {
+            if (mode)
+                return -1;
+            if (len == 16 && !strncmp(cmdline + 11, "probe", 5))
+                mode = 1;
+            else if (len == 18 && !strncmp(cmdline + 11, "bringup", 7))
+                mode = 2;
+            else
+                return -1;
+        }
+        cmdline = end;
+    }
+    return mode;
+}
+
 int azahi_pcie_init(const char *cmdline, void *fdt)
 {
-    if (!cmdline || !strstr(cmdline, "azahi.pcie="))
+    int mode = pcie_mode(cmdline);
+    if (!mode)
         return 0;   /* default: opted out */
-
-    bool bringup = strstr(cmdline, "azahi.pcie=bringup") != NULL;
-    bool probe = bringup || strstr(cmdline, "azahi.pcie=probe") != NULL;
-    if (!probe) {
-        printf("azahi-pcie: unrecognised azahi.pcie mode; skipping\n");
-        return 0;
+    if (mode < 0) {
+        printf("azahi-pcie: invalid or duplicate mode; refusing\n");
+        return -1;
+    }
+    const char *target = adt_getprop(adt, 0, "target-type", NULL);
+    if (chip_id != T6050 || board_id != 8 || !target || strcmp(target, "J714s")) {
+        printf("azahi-pcie: experiment is only defined for J714s T6050\n");
+        return -1;
     }
 
     int apcie_path[8];
@@ -351,6 +451,15 @@ int azahi_pcie_init(const char *cmdline, void *fdt)
         return 0;
     }
 
+    if (mode == 2 && (!fdt || fdt_path_offset(fdt, FDT_DART_PATH) < 0 ||
+                     fdt_path_offset(fdt, FDT_PCIE_PATH) < 0)) {
+        printf("azahi-pcie: bring-up requires both overlay nodes; refusing before MMIO\n");
+        return -1;
+    }
+
+    if (!pcie_preflight(apcie_path, mode == 2))
+        return -1;
+
     if (!ssd_domains_active()) {
         printf("azahi-pcie: SSD domains not all active; refusing (never own SSD power)\n");
         return -1;
@@ -359,7 +468,7 @@ int azahi_pcie_init(const char *cmdline, void *fdt)
     printf("azahi-pcie: pre-bring-up state:\n");
     dump_state(apcie_path);
 
-    if (!bringup) {
+    if (mode == 1) {
         printf("azahi-pcie: probe only, no writes\n");
         return 0;
     }
@@ -378,11 +487,11 @@ int azahi_pcie_init(const char *cmdline, void *fdt)
     }
 
     if (gp_controller_init(apcie_path)) {
-        printf("azahi-pcie: GP controller init failed; leaving port for Linux\n");
+        printf("azahi-pcie: GP controller init failed; refusing kernel handoff\n");
         return -1;
     }
     if (port0_bringup(apcie_path)) {
-        printf("azahi-pcie: port0 bring-up failed; leaving port for Linux\n");
+        printf("azahi-pcie: port0 bring-up failed; refusing kernel handoff\n");
         return -1;
     }
 

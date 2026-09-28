@@ -20,7 +20,113 @@ grep -zFxq 'apple,j714s' "$root/proc/device-tree/compatible" || { echo 'REFUSED:
 
 stamp=$(date +%Y%m%d-%H%M%S)
 report() { printf '%-14s %s\n' "$1" "$2"; }
-backup() { [[ ! -e $1 ]] || cp -a "$1" "$1.azahi-bak-$stamp"; }
+backup() {
+    local dest
+    [[ -e $1 ]] || return 0
+    dest=$(mktemp "$1.azahi-bak-$stamp.XXXXXX")
+    cp -aL -- "$1" "$dest"
+}
+systemctl_args=()
+[[ -z $root ]] || systemctl_args=(--root "$root")
+
+# Parse before changing anything. Repository-only excludes are not global
+# protection, and an empty or indented option must not hide the new values.
+dnfconf=$root/etc/dnf/dnf.conf
+dnf_desired=$(python3 - "$dnfconf" <<'PY'
+import configparser
+from pathlib import Path
+import re
+import shlex
+import sys
+
+path = Path(sys.argv[1])
+def parse(text):
+    config = configparser.ConfigParser(interpolation=None, delimiters=('=',))
+    config.optionxform = str
+    config.read_string(text)
+    if config.defaults():
+        raise ValueError('DEFAULT sections require manual review')
+    return config
+
+def unquote(value):
+    # libdnf5's IniParser removes one matching pair around the whole value.
+    if len(value) > 1 and value[0] == value[-1] and value[0] in ('"', "'"):
+        return value[1:-1]
+    return value
+
+try:
+    text = path.read_text() if path.exists() else ''
+    config = parse(text)
+    def items(value):
+        lexer = shlex.shlex(unquote(value), posix=True)
+        lexer.whitespace = ', \t\r\n'
+        lexer.whitespace_split = True
+        lexer.commenters = lexer.quotes = ''
+        return set(lexer)
+
+    # DNF5 loads sorted drop-ins first. /etc masks a matching vendor filename,
+    # then dnf.conf wins. An inherited disable_excludes can defeat every pin.
+    config_root = path.parents[2]
+    dropins = {}
+    for directory in ('etc/dnf/libdnf5.conf.d', 'usr/share/dnf5/libdnf.conf.d'):
+        for drop in (config_root / directory).glob('*.conf'):
+            if drop.is_file():
+                dropins.setdefault(drop.name, drop)
+    disabled = ''
+    for current in [*(parse(dropins[name].read_text()) for name in sorted(dropins)), config]:
+        if current.has_option('main', 'disable_excludes'):
+            disabled = current.get('main', 'disable_excludes')
+    if '$' in disabled:
+        raise ValueError('variable-based disable_excludes requires manual review')
+    if items(disabled) & {'main', '*'}:
+        raise ValueError('global excludes are disabled')
+    if config.has_option('main', 'exclude'):
+        raise ValueError('legacy exclude option requires manual review')
+    existing = config.get('main', 'excludepkgs', fallback='')
+    have = items(existing)
+    missing = [p for p in ('kernel*', 'm1n1*', 'uboot-images*', 'update-m1n1') if p not in have]
+    if missing:
+        lines = text.splitlines(keepends=True)
+        main = None
+        for i, line in enumerate(lines):
+            if line.lstrip().startswith('['):
+                if re.fullmatch(r'\s*\[main\]\s*(?:[#;].*)?', line):
+                    main = i
+                elif main is not None:
+                    break
+            elif main is not None:
+                match = re.match(r'([ \t]*excludepkgs[ \t]*=[ \t]*)(.*)', line)
+                if match:
+                    if unquote(existing) != existing:
+                        # Insert inside the quote, preserving multiline values.
+                        if not match[2].startswith(existing[0]):
+                            raise ValueError('cannot locate quoted excludes safely')
+                        lines[i] = match[1] + existing[0] + ','.join(missing) + ',' + match[2][1:] + '\n'
+                    else:
+                        suffix = ',' + match[2] if match[2].strip() else ''
+                        lines[i] = match[1] + ','.join(missing) + suffix + '\n'
+                    break
+        # No existing option: put a global one directly after [main].
+        if not config.has_option('main', 'excludepkgs'):
+            if main is None:
+                if lines and not lines[-1].endswith('\n'):
+                    lines[-1] += '\n'
+                lines.extend(['[main]\n', 'excludepkgs=' + ','.join(missing) + '\n'])
+            else:
+                if not lines[main].endswith('\n'):
+                    lines[main] += '\n'
+                lines.insert(main + 1, 'excludepkgs=' + ','.join(missing) + '\n')
+        text = ''.join(lines)
+        config.read_string(text)
+        if not set(missing) <= items(config.get('main', 'excludepkgs', fallback='')):
+            raise ValueError('cannot locate the global excludes option safely')
+    print(text, end='')
+except (OSError, ValueError, configparser.Error) as error:
+    detail = str(error) if isinstance(error, ValueError) else type(error).__name__
+    print('REFUSED: cannot safely update dnf.conf: ' + detail, file=sys.stderr)
+    sys.exit(1)
+PY
+)
 
 # 1. Sleep would stop the SSD controller and resume removes the root disk.
 logind=$root/etc/systemd/logind.conf.d/90-azahi-no-sleep.conf
@@ -34,12 +140,12 @@ else
     report WOULD-CHANGE "write ${logind#"$root"}"
 fi
 
-# Masked targets make every suspend request fail at once, including KDE's.
+# Masked targets block systemd suspend requests, including KDE's.
 for target in sleep suspend hibernate hybrid-sleep suspend-then-hibernate; do
-    if [[ $(systemctl is-enabled "$target.target" 2>/dev/null || true) = masked ]]; then
+    if [[ $(systemctl "${systemctl_args[@]}" is-enabled "$target.target" 2>/dev/null || true) = masked ]]; then
         report OK "$target.target masked"
     elif ((apply)); then
-        systemctl mask "$target.target" > /dev/null
+        systemctl "${systemctl_args[@]}" mask "$target.target" > /dev/null
         report CHANGED "$target.target masked"
     else
         report WOULD-CHANGE "mask $target.target"
@@ -47,38 +153,24 @@ for target in sleep suspend hibernate hybrid-sleep suspend-then-hibernate; do
 done
 
 # 2. The boot image pins this kernel; an update could remove its modules.
-dnfconf=$root/etc/dnf/dnf.conf
-patterns=(kernel\* m1n1\* uboot-images\* update-m1n1)
-current=$(sed -n 's/^excludepkgs[[:space:]]*=[[:space:]]*//p' "$dnfconf" 2>/dev/null | head -n 1 || true)
-missing=()
-for p in "${patterns[@]}"; do
-    [[ ",${current// /}," = *",$p,"* ]] || missing+=("$p")
-done
-if ((${#missing[@]} == 0)); then
+if [[ -f $dnfconf && $(< "$dnfconf") = "$dnf_desired" ]]; then
     report OK "dnf excludes kernel and boot-chain packages"
 elif ((apply)); then
     mkdir -p "${dnfconf%/*}"; backup "$dnfconf"
-    joined=$(IFS=,; echo "${missing[*]}")
-    if [[ -n $current ]]; then
-        sed -i "0,/^excludepkgs[[:space:]]*=.*/s//&,$joined/" "$dnfconf"
-    elif grep -q '^\[main\]' "$dnfconf" 2>/dev/null; then
-        sed -i "0,/^\[main\]/s//&\nexcludepkgs=$joined/" "$dnfconf"
-    else
-        printf '[main]\nexcludepkgs=%s\n' "$joined" >> "$dnfconf"
-    fi
-    report CHANGED "dnf excludes ${missing[*]}"
+    printf '%s\n' "$dnf_desired" > "$dnfconf"
+    report CHANGED "dnf excludes kernel and boot-chain packages"
 else
-    report WOULD-CHANGE "dnf exclude ${missing[*]}"
+    report WOULD-CHANGE "dnf exclude kernel and boot-chain packages"
 fi
 
 # 3. Optional: USB at boot. Boot with every USB-C socket empty either way.
 if ((usb)); then
     if [[ ! -f $root/etc/systemd/system/azahi-usb.service ]]; then
         report MISSING "azahi-usb.service not installed"
-    elif [[ $(systemctl is-enabled azahi-usb.service 2>/dev/null || true) = enabled ]]; then
+    elif [[ $(systemctl "${systemctl_args[@]}" is-enabled azahi-usb.service 2>/dev/null || true) = enabled ]]; then
         report OK "azahi-usb.service enabled"
     elif ((apply)); then
-        systemctl enable azahi-usb.service > /dev/null 2>&1
+        systemctl "${systemctl_args[@]}" enable azahi-usb.service > /dev/null 2>&1
         report CHANGED "azahi-usb.service enabled (next boot, sockets empty)"
     else
         report WOULD-CHANGE "enable azahi-usb.service"

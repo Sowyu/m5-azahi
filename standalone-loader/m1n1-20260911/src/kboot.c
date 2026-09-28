@@ -2194,8 +2194,7 @@ static int dt_set_sep(void)
         bail("FDT: failed to reserve sepfw");
 
     uint32_t mem_phandle = fdt_get_phandle(dt, mem_node);
-    ret = dt_device_add_mem_region(path, mem_phandle, "sepfw");
-    if (ret < 0)
+    if (dt_device_add_mem_region(path, mem_phandle, "sepfw") < 0)
         bail("FDT: failed to add sepfw region");
 
     int node = fdt_path_offset(dt, path);
@@ -3012,7 +3011,8 @@ int kboot_boot(void *kernel)
         for (int i = 0; i < MAX_CHOSEN_PARAMS && chosen_params[i][0]; i++)
             if (!strcmp(chosen_params[i][0], "bootargs"))
                 pcie_cmdline = chosen_params[i][1];
-        azahi_pcie_init(pcie_cmdline, dt);
+        if (azahi_pcie_init(pcie_cmdline, dt) < 0)
+            bail("kboot: PCIe experiment failed; no kernel handoff or retry\n");
     } else {
         pcie_init();
         dapf_init_all();

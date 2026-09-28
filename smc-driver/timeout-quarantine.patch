@@ -1,0 +1,35 @@
+--- a/drivers/mfd/macsmc.c
++++ b/drivers/mfd/macsmc.c
+@@ -127,9 +127,11 @@
+ 		return ret;
+ 	}
+ 
+ 	if (wait_for_completion_timeout(&smc->cmd_done, msecs_to_jiffies(SMC_TIMEOUT_MS)) <= 0) {
+-		dev_err(smc->dev, "Command timed out (%llx)", msg);
++		/* No cancellation acknowledgement: firmware may still own SRAM. */
++		WRITE_ONCE(smc->boot_stage, APPLE_SMC_ERROR_TIMED_OUT);
++		dev_err(smc->dev, "Command timed out (%llx); further commands disabled", msg);
+ 		return -ETIMEDOUT;
+ 	}
+ 
+ 	if (FIELD_GET(SMC_ID, smc->cmd_ret) != smc->msg_id) {
+--- a/include/linux/mfd/macsmc.h
++++ b/include/linux/mfd/macsmc.h
+@@ -71,14 +71,16 @@
+  * @APPLE_SMC_BOOTING: SMC is booting
+  * @APPLE_SMC_INITIALIZED: SMC is initialized and ready to use
+  * @APPLE_SMC_ERROR_NO_SHMEM: Shared memory could not be initialized during boot
+  * @APPLE_SMC_ERROR_CRASHED: SMC has crashed
++ * @APPLE_SMC_ERROR_TIMED_OUT: Command timed out; SRAM ownership is unknown
+  */
+ enum apple_smc_boot_stage {
+ 	APPLE_SMC_BOOTING,
+ 	APPLE_SMC_INITIALIZED,
+ 	APPLE_SMC_ERROR_NO_SHMEM,
+-	APPLE_SMC_ERROR_CRASHED
++	APPLE_SMC_ERROR_CRASHED,
++	APPLE_SMC_ERROR_TIMED_OUT
+ };
+ 
+ /**
+  * struct apple_smc

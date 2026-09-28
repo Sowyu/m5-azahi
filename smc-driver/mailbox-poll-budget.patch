@@ -1,0 +1,39 @@
+--- a/drivers/soc/apple/mailbox.c
++++ b/drivers/soc/apple/mailbox.c
+@@ -182,7 +182,7 @@
+ 	return IRQ_HANDLED;
+ }
+ 
+-static int apple_mbox_poll_locked(struct apple_mbox *mbox)
++static int apple_mbox_poll_locked(struct apple_mbox *mbox, int budget)
+ {
+ 	struct apple_mbox_msg msg;
+ 	int ret = 0;
+@@ -190,6 +190,8 @@
+ 	u32 mbox_ctrl = readl_relaxed(mbox->regs + mbox->hw->i2a_control);
+ 
+ 	while (!(mbox_ctrl & mbox->hw->control_empty)) {
++		if (budget && ret >= budget)
++			break;
+ 		msg.msg0 = readq_relaxed(mbox->regs + mbox->hw->i2a_recv0);
+ 		msg.msg1 = FIELD_GET(
+ 			APPLE_MBOX_MSG1_MSG,
+@@ -221,7 +223,7 @@
+ 	struct apple_mbox *mbox = data;
+ 
+ 	spin_lock(&mbox->rx_lock);
+-	apple_mbox_poll_locked(mbox);
++	apple_mbox_poll_locked(mbox, 0);
+ 	spin_unlock(&mbox->rx_lock);
+ 
+ 	return IRQ_HANDLED;
+@@ -233,7 +235,8 @@
+ 	int ret;
+ 
+ 	spin_lock_irqsave(&mbox->rx_lock, flags);
+-	ret = apple_mbox_poll_locked(mbox);
++	/* Let atomic callers check their own deadline even if firmware keeps sending. */
++	ret = apple_mbox_poll_locked(mbox, 32);
+ 	spin_unlock_irqrestore(&mbox->rx_lock, flags);
+ 
+ 	return ret;

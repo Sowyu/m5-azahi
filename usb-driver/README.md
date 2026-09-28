@@ -10,6 +10,19 @@ pauses hardware testing; do not repeat live controller/overlay reloads.
 See [current progress](../PROGRESS.md), [handoff](../docs/HANDOFF.md) and
 [build limitations](../docs/BUILD-AND-TEST.md).
 
+2026-09-28 local startup changes, not installed: missing optional USB network
+modules no longer abort host-controller startup. Required DART/DWC3/xHCI
+failures still stop immediately. Failures name their startup stage, and the
+installer's script pin matches the reviewed source. Ten mocked startup and
+installer tests pass. `USB_HOST_READY` still means only that a root hub
+exists, not that an attached device or network works. This does not fix the
+recorded `-71` or Imaging-versus-tethering failure.
+
+The five existing glue/PHY host tests now run on Linux with their temporary
+files moved to Trash. Fixed-host error cleanup, removal, the default-off PHY
+reinitialization path and overlay preflight ordering pass. Driver code is
+unchanged; these checks do not validate cable reconnection or physical reset.
+
 2026-09-25 source changes, none installed or hardware-tested (details in
 [the kernel audit](../docs/audit-2026-09-25/kernel.md) and
 [the tooling audit](../docs/audit-2026-09-25/tooling-loader.md)):
@@ -41,3 +54,12 @@ it does not load drivers or write SSD files. `build-transfer.py` documents the
 known-bad v4 packaging and is retained as a dependency of the fixed builder.
 Never install v4. Corrected v5 and v6 RAM handoffs later worked, and the
 installed image is now v7.
+
+## Linux host builds, 2026-09-28
+
+`build-linux.py` now builds the four USB modules against the exact public
+Fedora devel RPM, with strict kernel-export checks and matching vermagic.
+See [the Linux build instructions](../docs/BUILD-AND-TEST.md).
+These candidates are not installed or hardware-tested. Existing installer
+pins remain unchanged, and the missing live USB/network result still blocks
+a claim of working tethering.

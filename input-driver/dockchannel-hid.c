@@ -18,10 +18,11 @@
 #include <linux/string.h>
 #include <linux/unaligned.h>
 #include <linux/of.h>
-#include "build/linux-7.0.13/drivers/hid/hid-ids.h"
-/* Fedora's downstream hid-ids.h addition; same Apple vendor ID. */
+/* Same value as HOST_VENDOR_ID_APPLE in Fedora's drivers/hid/hid-ids.h.
+ * That private driver header is absent from the public kernel-devel RPM.
+ */
 #ifndef HOST_VENDOR_ID_APPLE
-#define HOST_VENDOR_ID_APPLE USB_VENDOR_ID_APPLE
+#define HOST_VENDOR_ID_APPLE 0x05ac
 #endif
 
 #define COMMAND_TIMEOUT_MS 1000
@@ -34,6 +35,11 @@
 static bool start_retry;
 module_param(start_retry, bool, 0644);
 MODULE_PARM_DESC(start_retry, "Allow one repeated interface start after a start timeout (default off)");
+
+/* 26A428 AppleHIDTransport uses IOSleep(50) for resource action 3. */
+static bool gpio_pulse_50ms;
+module_param(gpio_pulse_50ms, bool, 0644);
+MODULE_PARM_DESC(gpio_pulse_50ms, "Test the observed Apple 50 ms GPIO pulse on J714s (default off)");
 
 #define MAX_INTERFACES 16
 
@@ -195,6 +201,8 @@ struct dchid_iface {
 struct dockchannel_hid {
 	struct device *dev;
 	struct dockchannel *dc;
+	/* All interfaces share one FIFO. Hold only while sending a full packet. */
+	struct mutex tx_lock;
 	struct device_link *helper_link;
 
 	bool id_ready;
@@ -308,14 +316,16 @@ static int dchid_send(struct dchid_iface *iface, u32 flags, void *msg, size_t si
 	h.sub.flags = flags;
 	h.sub.length = size;
 
+	/* Per-interface out_mutex does not serialize different HID interfaces. */
+	mutex_lock(&iface->dchid->tx_lock);
 	ret = dockchannel_send(iface->dchid->dc, &h, sizeof(h));
 	if (ret < 0)
-		return ret;
+		goto out;
 	checksum -= dchid_checksum(&h, sizeof(h));
 
 	ret = dockchannel_send(iface->dchid->dc, msg, wsize);
 	if (ret < 0)
-		return ret;
+		goto out;
 	checksum -= dchid_checksum(msg, wsize);
 
 	if (tsize) {
@@ -324,15 +334,18 @@ static int dchid_send(struct dchid_iface *iface, u32 flags, void *msg, size_t si
 		memcpy(tail, msg + wsize, tsize);
 		ret = dockchannel_send(iface->dchid->dc, tail, sizeof(tail));
 		if (ret < 0)
-			return ret;
+			goto out;
 		checksum -= dchid_checksum(tail, sizeof(tail));
 	}
 
 	ret = dockchannel_send(iface->dchid->dc, &checksum, sizeof(checksum));
 	if (ret < 0)
-		return ret;
+		goto out;
 
-	return 0;
+	ret = 0;
+out:
+	mutex_unlock(&iface->dchid->tx_lock);
+	return ret;
 }
 
 static int dchid_cmd(struct dchid_iface *iface, u32 type, u32 req,
@@ -544,7 +557,7 @@ static int dchid_start_interface(struct dchid_iface *iface)
 
 	/* Look to see if we need firmware */
 	ret = dchid_get_firmware(iface, &fw, &size);
-	if (ret < 0)
+	if (ret)
 		goto err;
 
 	/* If we need a GPIO, make sure we have it. */
@@ -659,24 +672,24 @@ static int dchid_get_report_cmd(struct dchid_iface *iface, u8 reportnum, void *b
 	return ret <= 0 ? ret : ret - 1;
 }
 
-/* Note: buf includes report number! */
-static int dchid_set_report(struct dchid_iface *iface, void *buf, size_t len)
-{
-	return dchid_cmd(iface, HID_OUTPUT_REPORT, REQ_SET_REPORT, buf, len, NULL, 0);
-}
-
 static int dchid_raw_request(struct hid_device *hdev,
 				unsigned char reportnum, __u8 *buf, size_t len,
 				unsigned char rtype, int reqtype)
 {
 	struct dchid_iface *iface = hdev->driver_data;
+	int ret;
 
 	switch (reqtype) {
 	case HID_REQ_GET_REPORT:
 		buf[0] = reportnum;
 		return dchid_cmd(iface, rtype, REQ_GET_REPORT, &reportnum, 1, buf + 1, len - 1);
 	case HID_REQ_SET_REPORT:
-		return dchid_set_report(iface, buf, len);
+		/* buf includes the report number; preserve output vs feature type. */
+		ret = dchid_cmd(iface, rtype, REQ_SET_REPORT, buf, len, NULL, 0);
+		if (ret < 0)
+			return ret;
+		/* The HID caller needs the bytes sent, not the ACK payload length. */
+		return len;
 	default:
 		return -EIO;
 	}
@@ -877,7 +890,8 @@ static void dchid_handle_init(struct dockchannel_hid *dchid, void *data, size_t 
 		case INIT_GPIO_REQUEST: {
 			struct dchid_gpio_request *req = data;
 
-			if (sizeof(*req) > length)
+			/* A following block is not part of this GPIO request. */
+			if (sizeof(*req) > blk->length)
 				break;
 
 			if (iface->gpio_id) {
@@ -937,6 +951,8 @@ static void dchid_handle_gpio(struct dockchannel_hid *dchid, void *data, size_t 
 	struct dchid_iface *iface;
 	u32 retcode = 0xe000f00d; /* Give it a random Apple-style error code */
 	struct dchid_gpio_ack *ack;
+	int assert_ret, release_ret;
+	unsigned int pulse_ms = 10;
 
 	if (length < sizeof(*cmd))
 		return;
@@ -949,29 +965,35 @@ static void dchid_handle_gpio(struct dockchannel_hid *dchid, void *data, size_t 
 		goto err;
 	}
 
-	if (dchid_request_gpio(iface) < 0)
-		goto err;
-
-	if (!iface->gpio || cmd->gpio != iface->gpio_id) {
+	if (cmd->gpio != iface->gpio_id) {
 		dev_err(dchid->dev, "Got GPIO command for bad GPIO %s#%d\n",
 			iface->name, cmd->gpio);
 		goto err;
 	}
+	if (cmd->cmd != 3) {
+		dev_err(dchid->dev, "Unknown GPIO command %d\n", cmd->cmd);
+		goto err;
+	}
+	if (dchid_request_gpio(iface) < 0 || !iface->gpio)
+		goto err;
 
 	dev_info(dchid->dev, "GPIO command: %s#%d: %d\n", iface->name, cmd->gpio, cmd->cmd);
 
-	switch (cmd->cmd) {
-	case 3:
-		/* Pulse.  */
-		gpiod_set_value_cansleep(iface->gpio, 1);
-		msleep(10); /* Random guess... */
-		gpiod_set_value_cansleep(iface->gpio, 0);
-		retcode = 0;
-		break;
-	default:
-		dev_err(dchid->dev, "Unknown GPIO command %d\n", cmd->cmd	);
-		break;
+	if (gpio_pulse_50ms && of_machine_is_compatible("apple,j714s")) {
+		pulse_ms = 50;
+		dev_info(dchid->dev, "AZAHI_GPIO_PULSE_50MS iface=%d gpio=%d\n",
+			 cmd->iface, cmd->gpio);
 	}
+
+	/* Preserve the pulse and always attempt release, including on assert error. */
+	assert_ret = gpiod_set_value_cansleep(iface->gpio, 1);
+	msleep(pulse_ms);
+	release_ret = gpiod_set_value_cansleep(iface->gpio, 0);
+	if (assert_ret || release_ret)
+		dev_err(dchid->dev, "GPIO pulse failed: assert=%d release=%d\n",
+			assert_ret, release_ret);
+	else
+		retcode = 0;
 
 err:
 	/* Ack it */
@@ -1202,6 +1224,7 @@ static int dockchannel_hid_probe(struct platform_device *pdev)
 	}
 
 	dchid->dev = dev;
+	mutex_init(&dchid->tx_lock);
 
 	/*
 	 * First make sure all the GPIOs are available, in cased we need to defer.

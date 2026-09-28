@@ -1,5 +1,20 @@
 # Resume safely
 
+## 2026-09-28 offline update
+
+Read [the offline journal](audit-2026-09-28.md) for the newer source fixes,
+tests and exact-kernel candidate builds. Source changes are collected in
+[PR #5](https://github.com/Sowyu/m5-azahi/pull/5); build artifacts stay on the
+home server. Nothing has been installed. Hardware state remains the
+2026-09-13 checkpoint below.
+
+The [phone cable fallback](../remote-access/PHONE-CABLE.md) now includes a
+local offline ADB bundle and a tested protocol helper. It needs no tether
+network interface, but requires USB enumeration and phone debugging
+authorization. SSH uses a separate phone key. An optional Termux proxy can
+carry laptop web traffic through the phone's internet connection. Both
+hardware paths remain untested.
+
 ## 2026-09-25 offline update
 
 Offline work only; the hardware state recorded below is unchanged since
@@ -15,7 +30,8 @@ do on resumption:
    the install-bundle pins must be regenerated first. The installer now also
    pins `start-native-usb.sh` and `azahi-usb.service`.
 3. The cheapest new USB evidence is read-only: after the phone enumerates,
-   read its `power/usb2_hardware_lpm`. See the `-71` hypothesis list in
+   read its `power/usb2_hardware_lpm` policy. This does not report actual L1
+   activity or the policy of an earlier failed enumeration. See the `-71` hypothesis list in
    [kernel.md](audit-2026-09-25/kernel.md).
 4. A wired USB Ethernet or USB Wi-Fi adapter removes the phone's function
    switching from the problem and would restore SSH; see

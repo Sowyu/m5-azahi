@@ -1,5 +1,27 @@
 # SPMI4 transport prototype and SN201202x backport — host tests only
 
+2026-09-28 local change: selector mismatches and invalid response lengths
+now report `-EPROTO`, while a full polling timeout reports `-ETIMEDOUT`.
+Both still latch the failure and prohibit further bus access. The test runner
+now includes the logical HPM checks; eight groups pass under ASan/UBSan.
+The exact-kernel Linux candidate builds successfully. It is not installed,
+and the native startup installer keeps its existing binary pins.
+
+The host FFI bridge now builds with `$CC` or `cc` on Linux as well as macOS.
+`CC=gcc python3 test-proxy-hpm.py` passes 18 offline tests on Linux; the
+private live-ADT test skips when its fixture is absent. Build directories are
+retained. The proxy's live device and image guards are unchanged.
+
+Upstream follow-up, 2026-09-28: [m1n1 PR 594](https://github.com/AsahiLinux/m1n1/pull/594)
+at `75e2f00bc27c8919410afc34f79b863f5f28883f` adds SPMI HPM access.
+Its underlying `spmi.c` already selects generation-4 FIFO offsets from the
+ADT `gen` property. The HPM patch wakes a slave during initialization and
+sends SPMI SHUTDOWN during cleanup; its selector and task loops lack a finite
+iteration bound. It does not provide a Linux PD-event/role driver or establish
+reliable J714s tethering. Keep the existing bounded helper and its guards.
+[PR 636](https://github.com/AsahiLinux/m1n1/pull/636) factors HPM iteration and
+reports testing on T6000. Neither patch was applied here.
+
 ## Current Sep13 departure checkpoint
 
 The broader SPMI/PD backport remains a host-tested prototype. The separate

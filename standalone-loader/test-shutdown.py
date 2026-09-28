@@ -53,6 +53,12 @@ def bundle(dtb):
 
 @unittest.skipUnless(all(shutil.which(t) for t in ('dtc', 'fdtget', 'fdtput')), 'needs dtc, fdtget, fdtput')
 class ShutdownCandidate(unittest.TestCase):
+    def setUp(self):
+        if not shutil.which('trash-put'):
+            raise RuntimeError('Install trash-cli: sudo apt-get install -y trash-cli')
+        self.root = Path(tempfile.mkdtemp(prefix='azahi-shutdown-test-'))
+        self.addCleanup(subprocess.run, ['trash-put', str(self.root)], check=True)
+
     def compile(self, source):
         return subprocess.run(['dtc', '-q', '-I', 'dts', '-O', 'dtb'], input=source.encode(),
                               capture_output=True, check=True).stdout
@@ -65,14 +71,13 @@ class ShutdownCandidate(unittest.TestCase):
         self.assertEqual(len(image) % 16384, 0)
         for name in ('args', 'gzip', 'initrd'):
             self.assertEqual(new[name], previous[name])
-        with tempfile.NamedTemporaryFile(suffix='.dtb') as dt:
-            dt.write(new['dt'])
-            dt.flush()
-            compatible = subprocess.check_output(['fdtget', '-t', 's', dt.name, builder.NODE,
-                                                  'compatible'], text=True).strip()
-            self.assertEqual(compatible, 'apple,smc-reboot')
-            listed = subprocess.check_output(['fdtget', '-p', dt.name, builder.NODE], text=True)
-            self.assertEqual(listed.split(), ['compatible'])  # no nvmem cells, no status
+        dt = self.root / 'candidate.dtb'
+        dt.write_bytes(new['dt'])
+        compatible = subprocess.check_output(['fdtget', '-t', 's', str(dt), builder.NODE,
+                                              'compatible'], text=True).strip()
+        self.assertEqual(compatible, 'apple,smc-reboot')
+        listed = subprocess.check_output(['fdtget', '-p', str(dt), builder.NODE], text=True)
+        self.assertEqual(listed.split(), ['compatible'])  # no nvmem cells, no status
         # A second run must refuse rather than add a duplicate or edit further.
         with self.assertRaises(RuntimeError):
             builder.build(image)

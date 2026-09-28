@@ -5,7 +5,9 @@ All absolute task paths are redirected before execution; hardware commands
 are shell functions. No native device, module or system service is accessed.
 """
 from pathlib import Path
+from contextlib import contextmanager
 import os
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -14,10 +16,21 @@ SOURCE = Path(__file__).with_name('start-native-usb.sh').read_text()
 MODULES = ('phy_apple_t6050_usb2', 'azahi_usb_overlay', 'dwc3_apple_t6050')
 
 
+@contextmanager
+def temporary_root():
+    if not shutil.which('trash-put'):
+        raise RuntimeError('Install trash-cli: sudo apt-get install -y trash-cli')
+    root = tempfile.mkdtemp(prefix='azahi-startup-test-')
+    try:
+        yield root
+    finally:
+        subprocess.run(['trash-put', root], check=True)
+
+
 class Startup(unittest.TestCase):
     def case(self, modules=(), hpm=None, hub=False, refusal=False, fault=False,
              hash_bad=False, wrong_root=False, fail_module='', no_hub=False):
-        with tempfile.TemporaryDirectory(prefix='azahi-startup-test-') as tmp:
+        with temporary_root() as tmp:
             root = Path(tmp)
             for path in ('etc', 'opt/azahi-usb', 'sys/module', 'sys/bus/usb/devices',
                          'proc/device-tree'):
@@ -46,7 +59,7 @@ sha256sum() { echo checksum >> "$T/calls"; return "$HASH_BAD"; }
 readlink() { [[ -e "$2" ]] && echo /fake/382280000.usb/xhci/usb1; }
 sleep() { :; }
 modprobe() { echo "modprobe $*" >> "$T/calls"; [[ "$1" != "$FAIL_MODULE" ]]; }
-rmmod() { echo "rmmod $*" >> "$T/calls"; rm -r "$T/sys/module/azahi_hpm_once"; }
+rmmod() { echo "rmmod $*" >> "$T/calls"; trash-put "$T/sys/module/azahi_hpm_once"; }
 insmod() {
     echo "insmod $*" >> "$T/calls"
     if [[ $1 = ./azahi_hpm_once.ko ]]; then
@@ -116,14 +129,26 @@ insmod() {
             self.assertTrue(all(c == 'checksum' for c in calls))
 
     def test_driver_failure_no_teardown(self):
-        code, calls, _ = self.case(fail_module='dwc3')
+        code, calls, out = self.case(fail_module='dwc3')
         self.assertNotEqual(code, 0)
         self.assertEqual(calls[-1], 'modprobe dwc3')
+        self.assertIn('USB_START_FAILED: stage=modprobe-dwc3 status=1', out)
         self.assertFalse(any('rmmod' in c for c in calls))
         code, calls, _ = self.case(no_hub=True)
         self.assertNotEqual(code, 0)
         self.assertEqual(sum('insmod' in c for c in calls), 4)
         self.assertFalse(any('rmmod' in c for c in calls))
+
+    def test_optional_network_driver_does_not_block_host(self):
+        for module in ('usbnet', 'cdc_ncm', 'cdc_ether', 'rndis_host'):
+            with self.subTest(module=module):
+                code, calls, out = self.case(fail_module=module)
+                self.assertEqual(code, 0, out)
+                self.assertIn('USB_OPTIONAL_DRIVER_MISSING: ' + module, out)
+                self.assertIn('USB_HOST_READY', out)
+                self.assertNotIn('USB_START_FAILED', out)
+                self.assertEqual(calls[-1], 'insmod ./dwc3-apple-t6050.ko')
+                self.assertFalse(any('rmmod' in c for c in calls))
 
 
 class Installer(unittest.TestCase):

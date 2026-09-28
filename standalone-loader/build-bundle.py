@@ -43,7 +43,11 @@ def inspect(blob, receipt):
         pos += length
     assert pos == len(blob)
     assert parts['args'][-1:] == b'\0' and b'\0' not in parts['args'][:-1]
-    assert b'maxcpus=1' in parts['args'] and b'azahi.ssd_root=1' in parts['args']
+    args = parts['args'][:-1].split()
+    if b'--' in args:
+        args = args[:args.index(b'--')]
+    for key, value in ((b'maxcpus=', b'1'), (b'azahi.ssd_root=', b'1')):
+        assert [arg for arg in args if arg.startswith(key)] == [key + value]
     assert b'azahi,j714s-nvme-rootguard\0' in parts['dt']
     kernel = gzip.decompress(parts['gzip'])
     assert len(kernel) == 77398016 and struct.unpack_from('<Q', kernel, 16)[0] == len(kernel)

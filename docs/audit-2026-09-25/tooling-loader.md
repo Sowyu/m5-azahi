@@ -37,10 +37,12 @@ so every change is source only. Nothing was installed or run on the Mac.
 | X1 (partial) | none | Guard against hand-typed addresses drifting apart. | `test_shared_addresses_agree`: INITRD_ADDR must equal the kboot_set_initrd copy target; kernel/FDT/initrd windows must not overlap. |
 | Shutdown | new standalone-loader/build-shutdown.py | Builds a v8 candidate on the host: pinned v7 image plus one DT node. | New standalone-loader/test-shutdown.py on a synthetic bundle. |
 
-The loader C cannot be compile-checked as part of m1n1 because the repo holds
-only kboot.c and azahi_standalone.c. The changed fragments are compiled and
-run on the host with `cc -Wall -Wextra -Werror`. They take effect only when
-the private loader is rebuilt; the installed v7 loader is unchanged.
+At the September 25 audit, only the changed loader fragments could be
+compiled and run on the host with `cc -Wall -Wextra -Werror`. The September 28
+[full link check](../../standalone-loader/README.md#complete-offline-link-check)
+now reconstructs the archived integration against pinned upstream sources.
+Both complete ELF files link with no undefined symbols. This does not recover
+the exact private v7 payload or validate a boot; the installed loader is unchanged.
 
 Considered and not changed:
 
@@ -373,6 +375,12 @@ SYS_OFF_PRIO_HIGH, above apple_wdt. If the SMC accepts phra, the machine
 restarts. If the write fails with an error, apple_wdt still runs. But
 `apple_smc_write_atomic()` polls with no timeout, so a silent SMC would hang
 restart where the watchdog works today.
+
+The separate September 28 [SMC candidate](../../smc-driver/README.md) now
+limits that reply loop and refuses SRAM reuse while a command remains
+pending. It is not installed or included in this DT-only v8 change. Its
+lower-level mailbox drain still has no independent deadline, so the new
+loop bound is not a guarantee that every shutdown failure returns.
 
 ### Candidate
 

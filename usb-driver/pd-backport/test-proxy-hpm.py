@@ -5,6 +5,7 @@ from pathlib import Path
 import sys
 import unittest
 
+sys.dont_write_bytecode = True
 HERE = Path(__file__).resolve().parent
 spec = importlib.util.spec_from_file_location('hpm', HERE / 'proxy-hpm.py')
 hpm = importlib.util.module_from_spec(spec)
@@ -217,6 +218,7 @@ class Tests(unittest.TestCase):
             with self.assertRaises((RuntimeError, TimeoutError)): q.host_data()
             self.assertEqual(len([call for call in p.calls if call[0] == 0]), 1)
 
+    @unittest.skipUnless((hpm.ROOT / 'adt-real-t6050.bin').is_file(), 'Private live ADT absent')
     def test_saved_tree_identity(self):
         sys.path[:0] = [str(hpm.ROOT / 'pylib'), str(hpm.ROOT / 'proxy-kit/proxyclient')]
         from m1n1.adt import load_adt

@@ -1,0 +1,42 @@
+--- a/src/pmgr.c
++++ b/src/pmgr.c
+@@ -137,6 +137,27 @@
+     return addr;
+ }
+ 
++/* Resolve die-0 identity without changing power state. Fail on ambiguity. */
++uintptr_t pmgr_lookup_device_addr(const char *name)
++{
++    const struct pmgr_device *found = NULL;
++
++    if (!pmgr_initialized || !name || !name[0] || strlen(name) >= 0x10 ||
++        !pmgr_devices || !pmgr_ps_regs || !pmgr_ps_regs_len || pmgr_ps_regs_len % 12)
++        return 0;
++
++    for (size_t i = 0; i < pmgr_devices_len; i++) {
++        const struct pmgr_device *device = &pmgr_devices[i];
++        if (strncmp(device->name, name, sizeof(device->name)))
++            continue;
++        if (found || (device->flags & PMGR_FLAG_VIRTUAL))
++            return 0;
++        found = device;
++    }
++
++    return found ? pmgr_device_get_addr(0, found) : 0;
++}
++
+ static void pmgr_adt_get_parents(const struct pmgr_device *device, u16 parent[2])
+ {
+     if (pmgr_u8id) {
+--- a/src/pmgr.h
++++ b/src/pmgr.h
+@@ -28,6 +28,9 @@
+ int pmgr_reset(int die, const char *name);
+ int pmgr_power_on(int die, const char *name);
+ 
++/* Die 0 only; returns zero for missing, ambiguous or virtual devices. */
++uintptr_t pmgr_lookup_device_addr(const char *name);
++
+ int pmgr_set_mode(uintptr_t addr, u8 target_mode);
+ 
+ u32 pmgr_get_feature(const char *name);

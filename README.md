@@ -27,14 +27,14 @@ Policy: [Asahi Linux — Generative AI (LLM) Policy](https://asahilinux.org/llm-
 **Not ready for general installation. Do not run these drivers or boot tools on
 a daily-use machine. Never use the reference disk geometry on another SSD.**
 
-## Status, 2026-09-25 (hardware state last observed 2026-09-13)
+## Status, 2026-09-28 (hardware state last observed 2026-09-13)
 
 | Component | Evidence so far |
 | --- | --- |
 | Native Linux / SSD root | Native Fedora KDE from Btrfs SSD root demonstrated. Lid-close sleep can drop the root disk on the installed build: set `HandleLidSwitch=ignore` |
 | Autonomous boot | v7 SSD KDE cold boot verified; does not establish reliable USB networking |
 | Corrected v6 | RAM boot reached KDE; Recovery installation and exact readback verified |
-| CPU | One core; secondary-core startup unresolved. Two ranked hypotheses and a default-off read-only probe exist, untested |
+| CPU | One core; reset startup unresolved. Startup guards and read-only probe cross-compiled offline, not installed |
 | Graphics | Software rendering; no native GPU acceleration |
 | Keyboard | Working, with past compositor-related lag |
 | Trackpad | Working on some boots; intermittent early AFE startup failure |
@@ -48,6 +48,10 @@ Read [PROGRESS.md](PROGRESS.md) and [the handoff](docs/HANDOFF.md) before contin
 The 2026-09-25 offline audit, fixes and Wi-Fi PCIe groundwork are summarised in
 [docs/audit-2026-09-25](docs/audit-2026-09-25/README.md). None of it is installed.
 To use the installed system day to day, follow [daily-driver/](daily-driver/README.md).
+The [2026-09-28 offline work](docs/audit-2026-09-28.md) adds startup diagnostics,
+configuration fixes, stricter boot guards and Linux-host USB builds against
+the exact recovered devel RPM. These changes are uninstalled and do
+not establish a working daily driver.
 Publication is guarded by [default-deny ignores and index/history checks](docs/PUBLICATION-SAFETY.md).
 
 **Current departure state:** KDE is running, but the phone has not exposed a
