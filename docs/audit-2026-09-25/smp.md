@@ -50,6 +50,10 @@ when integrating newer code. These cache and re-entry fixes may matter after
 reset entry works, but do not explain the RAM-independent SEV experiment's
 negative result. No new hardware attempt is justified by the refactor alone.
 
+A September 29 API recheck still identifies `c42cf43d0388` as the latest
+upstream commit touching `src/smp.c`. PR 682 is closed; its merged changes
+are the same series inspected above.
+
 ## The earlier skip-CPU_START hypothesis is withdrawn
 
 The earlier report suggested skipping or OR-ing the CPU_START `+4` write
@@ -202,6 +206,57 @@ write. Searching aligned descriptor words for low bits `0xe440f8` finds no
 match in the inspected older Stage2, newer Stage2 or newer Stage1 binaries.
 Computed addresses, different bases and other firmware remain outside that
 search. No ACC initialization sequence follows from these negative results.
+
+### ACC feature loop and separate CPM gating
+
+The 26A428 ACC feature loop is narrower than the older loader feature tables.
+`AppleT6050PMGR::isFeatureACC` at `0xfffffe0009cc2144` selects IDs
+0, 18, 20, 21 and 22 using mask `0x740001` with an upper bound of 23.
+The base dispatcher at `0xfffffe00098583e0` resolves as follows through the
+T6050 vtable:
+
+| Feature ID | Slot | Result in this loop |
+| --- | --- | --- |
+| 0 | `+0xd88` | `enableAPSC` at `0xfffffe0009cc1dac` changes bit 23 of logical ACC register `0xe20020`. |
+| 18 | `+0xda0` | `enableDVMR(unsigned int, bool)` at `0xfffffe0009cc65a4` returns immediately. |
+| 20, 21, 22 | `+0xdb0` | Throttler IDs 1, 11 and 12 reach `0xfffffe0009cc45ec`, which returns for exactly those IDs. |
+
+Only the APSC entry reaches MMIO through this feature loop. Runtime feature
+validity and values still gate the call. The saved restore ADT has
+`cpu-apsc = 1`; historical APSC readbacks already had disable bit 23 clear.
+This does not describe the whole ACC restore routine or every throttler
+call. It does show why copying the older loader's throttle-register writes
+is not equivalent to the T6050 implementation. The final `0xe440f8` write
+remains unexplained.
+
+A separate path, `enableCPMPowerDomainGating` at `0xfffffe0009cc34cc`, loops
+over dies and CPU complexes. It preserves all but bit 31 of a 32-bit register
+and sets that bit for a true argument. The logical offsets are `0x120 +
+8 * complex`; wrappers at `0xfffffe0009cc625c` and `0xfffffe0009cc6268` add
+`0x2c000`. The base PMGR accessors select RegMap 0, which `initRegMaps` maps
+to ADT register index 0. Translating the saved die-0 ADT gives
+`0x28062c120`, `0x28062c128` and `0x28062c130`, all inside the declared range.
+These are separate from the previously observed cluster controls and
+per-device power-status registers.
+
+`restoreHW` calls this method at `0xfffffe0009cc11e8`, using a stored boolean
+loaded from `cpm-power-gating` during `initDriver`. `quiesceACC` also calls it
+with true. That property is absent from the saved restore ADT, which does
+not establish its live IOKit value or the registers' state. Exact operand
+searches of both decoded iBootData versions found no matching register
+offsets or bus addresses; indexed or computed accesses remain possible.
+
+This is a newly mapped initialization control, not evidence that changing
+it releases a CPU. No live values, reset dependency or recovery sequence are
+known. No probe, write or loader change was added. Reproduction uses the
+same kernelcache, for example:
+
+```sh
+ipsw macho disass KERNELCACHE \
+  --fileset-entry com.apple.driver.AppleT6050PMGR \
+  --symbol __ZN14AppleT6050PMGR26enableCPMPowerDomainGatingEb \
+  --demangle --no-color --force
+```
 
 The macOS addresses above belong to the saved 26A428 kernelcache with SHA-256
 `a691760372651464138779c3201c1886a385ca656397362d8e7701ba19ebf436`.
