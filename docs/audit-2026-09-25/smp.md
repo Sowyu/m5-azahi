@@ -80,10 +80,55 @@ probe could settle those alternatives was too strong.
 
 ## Source fixes prepared
 
+### XNU's kernel startup path
+
+The 26A428 kernel's own CPU-start path calls PMGR directly. It does not
+dispatch through the `AppleARMCPU::startCPU` method discussed below.
+This distinction matters when tracing prerequisites outside that method.
+
+The unnamed function at `0xfffffe000bc34c18` has the unique
+`cpu_start() cpu: %d` log reference and matches the control flow in Apple's
+[`osfmk/arm64/cpu.c`](https://github.com/apple-oss-distributions/xnu/blob/f6217f891ac0bb64f3d375211650a4c1ff8ca1ea/osfmk/arm64/cpu.c).
+The Mach-O function-start table independently places its end at
+`0xfffffe000bc34eb4`. The secondary branch stores a reset-handler pointer
+in CPU data at `0xfffffe000bc34d50`, prepares the initial thread and passes
+through conditional CoreSight setup. That RAM field is not an RVBAR MMIO
+write. The CoreSight block is skipped unless a separate debug-enable byte
+at `0xfffffe000c9d96e4` equals one; its presence does not justify repeating
+the historical faulting debug-register access.
+
+After two `DSB SY` instructions, the tail at `0xfffffe000bc34e60` loads the
+CPU ID, obtains the PMGR object from `0xfffffe000c9f32d8` and dispatches
+through its `+0x880` slot with an entry argument of zero. The boot thread's
+store to that same global at `0xfffffe000c3a637c` follows service matching
+for `IOPMGR` and a metaclass check. This identifies the receiver independently
+of the unnamed function's source correlation.
+
+The T6050 vtable entries at `0xfffffe00082c3a20` and
+`0xfffffe00082c3a28` resolve the next two calls. Slot `+0x880` reaches
+`IOPMGR::enableCPUCore(cpu, entry)` at `0xfffffe000c2d50dc`, which dispatches
+through `+0x888` to `ApplePMGR::enableCPUCore(cpu)` at
+`0xfffffe000985bf4c`. That method forms `1ULL << cpu` and invokes
+`enableCPUCores(mask, true)` through `+0xa88`, reaching the already traced
+CPU_START register sequence.
+
+Apple's [`AppleARMSMP.cpp`](https://github.com/apple-oss-distributions/xnu/blob/f6217f891ac0bb64f3d375211650a4c1ff8ca1ea/iokit/Kernel/arm/AppleARMSMP.cpp)
+describes this direct PMGR route. Its exported `PE_cpu_start_from_kext`
+entry is a panic stub, not the internal start operation. The binary confirms
+that stub at `0xfffffe000c40c484`; following that symbol alone would miss
+the real path. The public source is a separately pinned comparison, not an
+assumed exact source match for 26A428.
+
+This closes the kernel-to-PMGR call chain without identifying another reset
+release operation. It does not cover every earlier platform initializer,
+prove live execution or resolve the unexplained ACC restore write. The
+one-core guard and prohibition on repeating the faulting CoreSight access
+remain unchanged.
+
 ### The CPU driver also reaches the same PMGR sequence
 
-A further trace in the same 26A428 kernelcache connects the CPU driver to
-that mask-based path. `AppleARMCPU::startCPU` at `0xfffffe0008c89c6c`
+A separate trace in the same 26A428 kernelcache connects the alternate CPU
+driver method to that mask-based path. `AppleARMCPU::startCPU` at `0xfffffe0008c89c6c`
 returns immediately for the boot CPU. Otherwise it invokes its
 `function-enable_core` object with arguments `1, 0, 0`; it does not forward
 the supplied entry or context. The object's creation is visible at

@@ -45,6 +45,12 @@ a daily-use machine. Never use the reference disk geometry on another SSD.**
 | Shutdown | Stalls at poweroff.target: no power-off handler (missing `apple,smc-reboot` DT node). v8 candidate builder exists, not installed |
 
 Read [PROGRESS.md](PROGRESS.md) and [the handoff](docs/HANDOFF.md) before continuing.
+
+**Resuming on a second Mac:** check out `audit-2026-09-25` and start with
+[the self-contained handoff](docs/HANDOFF.md). It includes the fresh-clone
+commands, project checkpoint and attended serial/reset validation sequence.
+Both Macs are now available; their connection and reset recovery are untested.
+
 The 2026-09-25 offline audit, fixes and Wi-Fi PCIe groundwork are summarised in
 [docs/audit-2026-09-25](docs/audit-2026-09-25/README.md). None of it is installed.
 To use the installed system day to day, follow [daily-driver/](daily-driver/README.md).
@@ -54,13 +60,13 @@ the exact recovered devel RPM. These changes are uninstalled and do
 not establish a working daily driver.
 Publication is guarded by [default-deny ignores and index/history checks](docs/PUBLICATION-SAFETY.md).
 
-**Current departure state:** KDE is running, but the phone has not exposed a
-working network interface. USB automatic startup was deliberately disabled
-for a delayed-start experiment and has not been restored. Both automatic and
-delayed manual startup have subsequently failed to provide reliable internet.
-No more reboot/proxy tests are requested while the user is away. Read the
-handoff before changing anything; older successful tests are not a current
-working recipe. Live USB-controller reload is unsafe and previously failed.
+**Last observed hardware state, September 13:** KDE booted, but the phone did
+not expose a working network interface. USB automatic startup was deliberately
+disabled for a delayed-start experiment and remained disabled at last check.
+Both automatic and delayed manual startup failed to provide reliable internet.
+The next session starts with the second-Mac reset setup in the handoff.
+Older successful tests are not a current working recipe. Live USB-controller
+reload is unsafe and previously failed.
 
 ## Contents
 

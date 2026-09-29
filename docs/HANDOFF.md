@@ -1,4 +1,196 @@
-# Resume safely
+# Handoff for the second Mac
+
+## 2026-09-29 handoff: both Macs are available
+
+Start here if you have no previous conversation or local project files.
+This repository is an experimental Linux port for one M5 Pro MacBook.
+The goal is usable Linux with all 18 cores. It currently has evidence for
+only one working core. The user now has the target laptop and a second Mac
+to control it. Work previously ran on a Debian home server without access
+to either Mac.
+
+The next milestone is attended validation of remote hardware reset and
+serial capture, so a hung M5 no longer requires someone to hold its power
+button. This takes priority over the older USB networking work below.
+The second Mac's model, macOS version, connection and cable capabilities
+have not been checked. Having both Macs does not establish working access.
+
+### Get the right checkout
+
+This handoff and the current work are on `audit-2026-09-25` in
+[PR #5](https://github.com/Sowyu/m5-azahi/pull/5), not yet merged into `main`.
+On the helper Mac, run these commands in a parent directory without an
+existing `m5-azahi` directory:
+
+```sh
+git clone --branch audit-2026-09-25 --single-branch https://github.com/Sowyu/m5-azahi.git
+cd m5-azahi
+git status --short --branch
+git rev-parse HEAD
+```
+
+If a checkout already exists, inspect its branch and changes before updating.
+Do not reset, overwrite or discard it. Record the checked-out commit with
+test results. Git may first request Apple's command-line developer tools;
+finish that setup before retrying.
+
+Give the agent on the helper this instruction:
+
+> Continue the M5 Linux project from docs/HANDOFF.md on branch
+> audit-2026-09-25. I have the target M5 Pro and a second Mac now. First
+> identify the helper and establish macvdmtool serial/reset control. Follow
+> the attended validation sequence before CPU-start experiments. You have
+> no earlier chat context; use this repository and record new evidence.
+
+The user authorized publishing this handoff and the accompanying research.
+No new hardware operation has been performed by that publication. When the
+user asks to continue on the helper, begin the session below. Older notes
+saying the user is away or work is offline-only describe the previous
+session; they do not override the new session's instructions. Preserve the
+hardware recovery constraints. Keep updates brief and do not repeatedly ask
+for permission to perform work the user already authorized.
+
+### Project checkpoint
+
+- Target: J714s / Mac17,9, M5 Pro / T6050, 18 physical cores. Last hardware
+  evidence is the September 13 v7 SSD boot into KDE on
+  `7.0.13-400.asahi.fc44.aarch64+16k`, with only CPU0 online. USB networking
+  and remote access were disconnected; poweroff hung. Recheck current state.
+- Repository: [Sowyu/m5-azahi](https://github.com/Sowyu/m5-azahi), branch
+  `audit-2026-09-25`, [PR #5](https://github.com/Sowyu/m5-azahi/pull/5).
+  The previous published checkpoint was
+  `5a658b5627f3ad9839c208389883096d1972b2d6`; this handoff and the CPU trace
+  follow it. Offline fixes and builds have not been installed on the M5.
+- The current CPU research accompanies this handoff in
+  [smp.md](audit-2026-09-25/smp.md) and
+  [the offline journal](audit-2026-09-28.md). These files are in the public
+  branch; no earlier chat or unpublished note is needed to read the findings.
+- The public repository contains reviewed source and instructions, not a
+  bootable installer. Private firmware, complete loader inputs, exact build
+  fixtures and built artifacts remain on the home server. They are not
+  needed to build macvdmtool and test the already installed boot. For later
+  target builds, follow [BUILD-AND-TEST.md](BUILD-AND-TEST.md) and arrange
+  private access to required inputs. Do not replace missing files with
+  guessed fixtures or run historical installation commands blindly.
+- Secondary cores previously showed powered-on status but no loader entry
+  marker. Power status, compilation and CPU enumeration do not prove code
+  execution. The missing ACC initialization is an untested lead, not a fix.
+
+### First live session
+
+1. Identify the helper Mac and establish access to it. It must be an Apple
+   Silicon Mac running macOS for this tool. Start with `uname -m`,
+   `sw_vers` and `sysctl -n hw.model` on the helper. The intended connection
+   is home server to helper over SSH, then helper to M5 over USB-C. The
+   helper needs its own network connection and must stay awake through a
+   target reset. If the agent runs directly on the helper, SSH is optional.
+2. Identify both machines' DFU/debug ports and connect them directly with a
+   USB 3 capable USB-C cable for serial mode. Consult
+   [Apple's current port table](https://support.apple.com/en-us/120694);
+   do not apply the base M5 port rule to an M5 Pro. That table puts this
+   target's port on the left side, nearest the hinge. These are port
+   locations, not instructions to enter DFU or restore firmware.
+3. Build [Asahi's macvdmtool](https://github.com/AsahiLinux/macvdmtool) on
+   the helper with Xcode command-line tools and `make`. Use a separate
+   checkout, not the incomplete loader tree in this repository. Record
+   its commit. The helper runs macOS while the target keeps its Linux boot.
+   Establish serial access with `sudo ./macvdmtool serial` and inspect the
+   actual device nodes. The upstream README inconsistently spells its
+   example serial path with a hyphen and an underscore; use the real node.
+   Check whether the installed loader/kernel actually emits serial output.
+   The current standalone image is not proven to expose an m1n1 proxy shell.
+4. Save work and quiesce target writes before an attended reset. From the
+   helper, the documented command is `sudo ./macvdmtool reboot serial`.
+   Capture its output and fresh boot logs outside the target. Verify the
+   correct Mac reset, the helper stayed reachable, and the known v7 boot
+   returned. Use three attended normal resets as an initial repeatability
+   check. A successful command exit alone is insufficient.
+5. Validate recovery from a controlled hang only after normal resets work
+   and a recoverable test environment is ready. Prefer an approved RAM
+   experiment with storage idle. Record what was hung, what reset did, and
+   whether boot and serial capture recovered. Check the CPU/reset baseline
+   against a manual recovery before treating this as adequate recovery for
+   SMP tests. USB-PD reset is not yet proven equivalent to a full power
+   cycle for our failure. Stop after failed recovery instead of looping.
+
+For step 3, run on the helper in a directory without an existing
+`macvdmtool` checkout:
+
+```sh
+xcode-select -p
+git clone https://github.com/AsahiLinux/macvdmtool.git
+cd macvdmtool
+git rev-parse HEAD
+make
+sudo ./macvdmtool serial
+```
+
+If developer tools are missing, use `xcode-select --install` and complete
+the macOS installation prompt before building. The `serial` command sets
+up the debug connection; the separate reset command in step 4 restarts the
+target. Run reset commands from the helper, never from the Linux target.
+The helper does not need this project's private boot artifacts or a fresh
+Linux installation for the initial reset test. If the second Mac is Intel,
+macvdmtool is not the documented host path; report that concrete mismatch
+instead of treating it as an M5 failure.
+
+Keep serial capture on the helper, separate from each experiment process.
+After recovery is established, the intended loop is one hypothesis, bounded
+test, saved logs, recorded result, reset and verified return to baseline.
+Search previous results before retrying a hypothesis. Repeated normal boots
+alone do not justify unattended CPU-start experiments.
+
+Keep raw captures outside the public checkout. Record the helper model and
+OS, tool and project commits, ports, cable type, commands, return status,
+observed target boot, reset count and any manual intervention. Report
+serial capture, normal reset and hang recovery separately as passed, failed
+or untested. Publish only a sanitized result summary; a failed trial is a
+result to preserve, not a reason to repeat the same loop indefinitely.
+
+### CPU investigation to resume after reset recovery works
+
+Read [the SMP investigation](audit-2026-09-25/smp.md) and
+[the guarded startup notes](../smp/README.md) before making a candidate.
+The latest static trace connects the real kernel `cpu_start` through IOPMGR
+to the existing CPU_START sequence. The older proposal to skip a CPU_START
+write was withdrawn.
+
+The strongest remaining initialization difference is T6050 ACC restoration:
+Apple's driver performs a write that the loader's T6050 cpufreq path skips.
+Its purpose, live value and prerequisites remain unresolved. The detailed
+mapping is in the investigation. Do not turn the address into a blind write
+or enable older-chip frequency/voltage sequences.
+
+Preserve `AZAHI_ONE_CORE`, reset-vector checks and timeout quarantine. The
+old `azahi.smp=start` mode is refused intentionally. A new start experiment
+requires a separately reviewed entry and one concrete hypothesis. Success
+eventually requires each core entering the loader and all 18 executing
+Linux work. The prepared `python3 smp/check-linux-cpus.py --run` checks
+per-core execution once they are online; it does not bring cores online.
+
+### Boundaries and supporting evidence
+
+Keep v7 and its rollback artifacts. Preserve the daily macOS installation
+and partition layout. No DFU restore, erase, repartition, blanket kernel
+update or live USB/input driver unloading is part of this reset setup.
+Follow the existing sleep precautions in
+[daily-driver/README.md](../daily-driver/README.md). Never permanently
+delete files; follow the current machine's recoverable Trash policy.
+The server uses `trash-put`; do not assume a Debian command exists on macOS.
+Identify the helper's recoverable Trash method before removing anything.
+Keep serials, network addresses, logs, firmware and captures private.
+
+[Cody Ho's firsthand development account](https://codyho.dev/blog/hypervisor-macbook-neo/#the-setup)
+describes a Mac mini controlling a MacBook Neo with `macvdmtool`, timed
+experiments and a persistent experiment log. It demonstrates the workflow,
+not recovery from this M5 Pro's CPU-start failure. Use the
+[upstream tool instructions](https://github.com/AsahiLinux/macvdmtool) for
+commands and cable requirements. Both remain unverified on our two Macs.
+
+The sections below preserve earlier hardware evidence and recovery details.
+Their historical priorities are superseded by the two-Mac reset milestone
+above. In particular, the old phone-based SSH connection is not a prerequisite
+for establishing reset control from the helper.
 
 ## 2026-09-28 offline update
 
