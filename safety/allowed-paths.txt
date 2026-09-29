@@ -400,6 +400,10 @@ usb-driver/courier-vm-init.sh
 usb-driver/test-courier-vm.py
 usb-driver/test-transfer-v6.py
 usb-driver/proxy-test-v6.py
+usb-driver/azahi-usb-start-retry.sh
+usb-driver/azahi-usb.service.d/10-phone-no-lpm.conf
+usb-driver/azahi-usb.service.d/20-retry-clean-refusal.conf
+usb-driver/test-usb-retry.py
 usb-driver/pd-backport/README.md
 usb-driver/pd-backport/check-build.sh
 usb-driver/pd-backport/vendor/SHA256SUMS

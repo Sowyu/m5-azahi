@@ -1,5 +1,96 @@
 # Handoff for the second Mac
 
+## 2026-09-29 live session: tethering restored, reset still open
+
+The agent ran directly on the helper (MacBook Pro 14" 2021, M1 Pro,
+MacBookPro18,3, macOS 26.6.2) with the target attached. Project commit at
+start: `d87c468`. macvdmtool: AsahiLinux `b22ae51`. Raw captures, addresses
+and photos stay private.
+
+### Serial and reset (first live session steps 1-4)
+
+| Check | Result |
+| --- | --- |
+| Helper control (`macvdmtool nop`) | Passed: unlock and DBMa work; helper is power source |
+| Serial (`macvdmtool serial`) | Failed: target replies `0x05AC80D2` (SVDM BUSY) |
+| Normal reset | Untested: the reboot VDM was never sent |
+| Hang recovery | Untested |
+
+The BUSY reply is identical to the 2026-08-15 attempt recorded in
+`research-archive/BRINGUP.md`, which this handoff previously omitted. This
+time the target ran Linux and that port was otherwise unused, so the old USB
+proxy on the same port does not explain it. The user reports the cable is on
+the left side; whether it is the rear DFU port was not confirmed. BUSY (not
+NAK) suggests a state-dependent refusal. Next lead:
+[AsahiLinux/kisd](https://github.com/AsahiLinux/kisd) lists M5 Pro t6050
+DebugUSB as verified, so try `macvdmtool debugusb` before any reset VDM.
+
+### USB tethering restored and made persistent
+
+1. The first `azahi-usb` start today refused cleanly: an unrelated USB-C
+   cable in the right socket gave HPM status plug-present, sink, UFP.
+   With the socket empty the service reported `USB_HOST_READY`.
+2. With the host up, the phone was plugged in and tethering enabled. It
+   enumerated as `18d1:4e11`, then re-enumerated as **`05c6:9024`** (RNDIS)
+   and `rndis_host` created `enu1`; DHCP, NTP and remote access followed.
+   No `-71` appeared.
+3. A usbcore NO_LPM quirk (flag `k`) was active for the phone's `18d1`
+   IDs but not for `05c6:9024`, so this success is **not** attributable to
+   disabling USB2 LPM for the tethering function. The quirk is kept, now
+   including `05c6:9024`, as a precaution: macOS never enables USB2 LPM on
+   this port (see the LPM policy trace in `audit-2026-09-25/kernel.md`).
+4. Installed on the target, all reversible:
+   - `daily-driver/apply-safe-config.sh --apply --usb-at-boot`: sleep
+     targets masked, lid ignored, DNF kernel/boot excludes, `azahi-usb`
+     enabled at boot. A second report run shows every line `OK`.
+   - `usb-driver/azahi-usb.service.d/10-phone-no-lpm.conf`: writes the
+     quirk list before the controller starts.
+   - `usb-driver/azahi-usb-start-retry.sh` plus
+     `azahi-usb.service.d/20-retry-clean-refusal.conf`: only a clean HPM
+     refusal (`result=-11`, not poisoned) exits 75 and is retried every
+     10 s, at most 90 starts in 15 minutes. Poisoned or other failures pass
+     through unchanged and never loop. `usb-driver/test-usb-retry.py`.
+5. Boot test: `systemctl reboot` over SSH returned unattended, so reboot
+   works; power-off still halts. With the phone attached during boot the
+   guard refused cleanly and retried. After the phone was unplugged once,
+   the HPM woke (`state=0`) and the host came up; replugging restored
+   tethering and remote access with no typing on the target.
+
+Rule for daily use: boot with the right socket empty, or unplug the phone
+for about 15 s after KDE appears. Setting the phone's developer option
+"Default USB configuration" to USB tethering avoids toggling it each time.
+
+### Remote access
+
+The 2026-09-13 relay and tunnel design (`remote-access/`) is reused. The
+target sits behind the phone's NAT, so inbound SSH is impossible and the
+reverse tunnel is required. The helper's LAN address had changed, so the
+target's tunnel unit was retargeted and the relay now runs on the helper as
+a user LaunchAgent under `caffeinate -s`. The helper's address must stay
+fixed.
+
+### Build environment on the target
+
+The target now builds kernel modules natively. A plain `dnf install gcc`
+would have upgraded 15 core packages (glibc, OpenSSL, libgcc), so exact
+matches were installed instead: gcc/cpp/libasan/libubsan 16.1.1-2,
+glibc-devel 2.43-7, elfutils-libelf-devel 0.195-1 and openssl-devel
+3.5.7-2 from Fedora koji, and kernel-headers plus kernel-16k-devel
+7.0.13-400 from the Asahi COPR. 14 installs, no upgrades. The running
+kernel was built with the same gcc 16.1.1-2.
+
+### PR review
+
+PRs #1-#4 were reviewed against #5. Everything useful was already present or
+deliberately rejected with a documented reason, except PR #4's
+`HPM_TUPLE` failure diagnostics, now re-applied by hand with attribution.
+
+### Next
+
+Native Wi-Fi (Apple N1) stage 1: PCIe link and enumeration, planned from
+`audit-2026-09-25/pcie.md`. Remote reset via DebugUSB. CPU start remains
+blocked on reliable reset.
+
 ## 2026-09-29 handoff: both Macs are available
 
 Start here if you have no previous conversation or local project files.

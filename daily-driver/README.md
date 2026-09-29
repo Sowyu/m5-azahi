@@ -11,16 +11,18 @@ Updated 2026-09-28 offline. None of these changes has run on the machine.
 | --- | --- |
 | KDE from the SSD, full 3024x1964 display, 175% scaling | One CPU core, software rendering: slow for heavy apps |
 | Keyboard | Trackpad fails on some boots; reboot usually fixes it |
-| Earlier phone tethering worked | Currently broken; USB adapters are proposed and untested |
+| Phone USB tethering, at boot and after replug (2026-09-29) | Boot with the right socket empty, or unplug the phone once after boot |
 | Reboot | Power-off halts instead; see the shutdown rule |
 | | No sleep. Closing the lid does nothing and the battery keeps draining |
 
 ## Daily rules
 
-1. Boot with every USB-C socket empty. MagSafe is fine. Plug USB devices in
-   after KDE is up and USB startup reports ready. A connected phone can cause
-   a clean HPM refusal. The helper's already-awake path does not enforce an
-   empty socket, so follow this order even when it reports ready.
+1. Boot with the right USB-C socket empty. MagSafe is fine. Plug USB devices
+   in after KDE is up. A device attached during boot causes a clean HPM
+   refusal; `azahi-usb` then retries every 10 s for up to 15 minutes, so
+   unplugging it for about 15 s is enough. The helper's already-awake path
+   does not enforce an empty socket, so follow this order even when it
+   reports ready.
 2. Shut down with `systemctl poweroff`, then wait for the line
    `Power off not available: System halted instead`. It prints only after
    every device has shut down, so holding the power button after it is as
@@ -91,7 +93,12 @@ installed kernel, drivers or boot image, and does not enable more CPU cores.
 
 ## Getting a network
 
-The fastest route is a USB adapter on the right-hand USB-C socket, through a
+Phone USB tethering works again (2026-09-29, see `docs/HANDOFF.md`). With
+`azahi-usb` enabled and the two drop-ins from `usb-driver/azahi-usb.service.d/`
+installed, plug the phone into the right socket after KDE is up and enable
+USB tethering; NetworkManager's `azahi-usb-tether` profile connects `enu1`.
+
+A USB adapter on the right-hand USB-C socket remains an alternative, through a
 USB-C to USB-A adapter if needed. Details and driver list:
 [../docs/USB-NETWORK-ADAPTERS.md](../docs/USB-NETWORK-ADAPTERS.md).
 
