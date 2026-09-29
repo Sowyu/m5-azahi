@@ -150,6 +150,17 @@ insmod() {
                 self.assertEqual(calls[-1], 'insmod ./dwc3-apple-t6050.ko')
                 self.assertFalse(any('rmmod' in c for c in calls))
 
+    def test_every_failure_prints_hpm_tuple(self):
+        for kwargs in ({'wrong_root': True}, {'hash_bad': True}, {'refusal': True},
+                       {'fault': True}, {'fail_module': 'dwc3'}, {'no_hub': True},
+                       {'modules': MODULES}, {'hpm': (0, 'N', 'N')}):
+            code, _, out = self.case(**kwargs)
+            self.assertNotEqual(code, 0, out)
+            self.assertIn('HPM_TUPLE', out)
+        code, _, out = self.case()
+        self.assertEqual(code, 0, out)
+        self.assertNotIn('HPM_TUPLE', out)
+
 
 class Installer(unittest.TestCase):
     def test_every_root_file_pinned_and_staged(self):

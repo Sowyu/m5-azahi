@@ -2,14 +2,30 @@
 # Exact-kernel J714s startup. Never tears down the applied USB overlay.
 set -Eeuo pipefail
 stage=identity
+params=/sys/module/azahi_hpm_once/parameters
+# Print the HPM tuple on every failing exit. A failed hpm-once init
+# deregisters the module, so the tuple would otherwise vanish with it.
+hpm_tuple() {
+    local name line=
+    [[ -d $params ]] || { echo 'HPM_TUPLE: azahi_hpm_once not loaded'; return 0; }
+    for name in result ready poisoned; do
+        if [[ -r $params/$name ]]; then line+=" $name=$(< "$params/$name")"
+        else line+=" $name=?"; fi
+    done
+    echo "HPM_TUPLE:$line"
+}
 trap 'status=$?; printf "USB_START_FAILED: stage=%s status=%s; no teardown attempted\n" "$stage" "$status" >&2' ERR
+trap 'status=$?; [[ $status = 0 ]] || hpm_tuple' EXIT
 [[ $(id -u) = 0 && $(uname -r) = '7.0.13-400.asahi.fc44.aarch64+16k' ]] || {
     echo 'USB_START_REFUSED: root and the pinned kernel are required' >&2
     exit 1
 }
 IFS= read -r expected_uuid < /etc/azahi-usb-root
 [[ $(findmnt -n -o UUID /) = "$expected_uuid" ]] || { echo 'Wrong Linux root'; exit 1; }
-grep -zFxq 'apple,j714s' /proc/device-tree/compatible || exit 1
+grep -zFxq 'apple,j714s' /proc/device-tree/compatible || {
+    echo 'USB_START_REFUSED: device tree is not apple,j714s' >&2
+    exit 1
+}
 cd /opt/azahi-usb
 stage=checksums
 sha256sum -c SHA256SUMS
@@ -29,7 +45,6 @@ if [[ $count = 3 ]]; then
 fi
 [[ $count = 0 ]] || { echo 'Partial USB load; no retry or teardown'; exit 1; }
 
-params=/sys/module/azahi_hpm_once/parameters
 stage=hpm
 if [[ -d $params && $(< "$params/result") = -11 && $(< "$params/poisoned") = N ]]; then
     # A previous clean refusal occurred before any SSPS task. An explicit
