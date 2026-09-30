@@ -45,6 +45,38 @@ The old BAR4 crash-window reader remains quarantined and was not used. There
 was no new Linux kernel panic in this checkpoint's tests. Exact live state and
 private evidence are recorded in the private workspace's `wifi/RESULTS.md`.
 
+## 2026-09-30 shutdown and reboot investigation
+
+PR #5 is merged; PRs #1–#4 are closed without merging their original branches.
+The useful reviewed fixes are in #5, including the separately attributed
+PR #4 HPM diagnostics. The later Wi-Fi checkpoint is on `audit-2026-09-25`;
+it was pushed after #5 merged and is not yet on `main`.
+
+The latest saved Linux boot log still contains
+`macsmc-reboot: Failed to locate of_node [id: -1]`. Reconstructing the exact
+7.0.13 Fedora sources confirms that `macsmc_reboot_probe()` returns `-ENODEV`
+without that node. PR #3's module-load file cannot fix this. The existing
+DT-only shutdown candidate remains uninstalled; adding the node alone may
+still need the PMU shutdown flag to power off instead of restarting.
+
+Reboot failure is a separate, unresolved report. The Apple watchdog driver
+implements restart, not power-off. The earlier successful reboot was one
+observation, not evidence of reliable reboot under every later device state.
+Do not infer the current watchdog binding merely from its presence in the DT.
+
+The old PR also incorrectly treated `poweroff.target` as proof that kernel
+device shutdown callbacks had finished. Kernel `device_shutdown()` runs later
+and can block before the final power/reset handler. `Restarting system` and
+`Reboot failed -- System halted` distinguish later stages. Transient
+`initcall_debug` enables per-device shutdown messages for an attended capture;
+it does not identify every possible preceding lock or runtime-PM wait.
+
+At this review target SSH timed out before the banner, so no new live state
+or failure-stage log was available. A read-only collector and exact patched
+kernel extracts are saved privately for resumption. No reboot, shutdown,
+module replacement, SMC/PMU write or boot-image installation was performed.
+Native Wi-Fi packet testing remains paused at the checkpoint above.
+
 ## 2026-09-29 earlier Wi-Fi checkpoint: ROM accepted firmware
 
 The firmware-format pause has been superseded by a live Linux test. N1
@@ -124,8 +156,9 @@ DebugUSB as verified, so try `macvdmtool debugusb` before any reset VDM.
      refusal (`result=-11`, not poisoned) exits 75 and is retried every
      10 s, at most 90 starts in 15 minutes. Poisoned or other failures pass
      through unchanged and never loop. `usb-driver/test-usb-retry.py`.
-5. Boot test: `systemctl reboot` over SSH returned unattended, so reboot
-   works; power-off still halts. With the phone attached during boot the
+5. Boot test: one `systemctl reboot` over SSH returned unattended. This
+   established one successful reboot; later reports say reboot can hang.
+   Power-off still halts. With the phone attached during boot the
    guard refused cleanly and retried. After the phone was unplugged once,
    the HPM woke (`state=0`) and the host came up; replugging restored
    tethering and remote access with no typing on the target.
