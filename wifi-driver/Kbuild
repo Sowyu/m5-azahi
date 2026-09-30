@@ -1,0 +1,2 @@
+obj-m := n1-rom-survey.o
+obj-m += n1-rom-boot.o

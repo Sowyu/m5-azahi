@@ -1,0 +1,1 @@
+obj-m := n1-preboot-clean.o

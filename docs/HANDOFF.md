@@ -1,5 +1,79 @@
 # Handoff for the second Mac
 
+**2026-09-30 checkpoint: native N1 now securely associates to a WPA2-PSK/CCMP
+access point and receives ordinary network packets under Linux.** The firmware
+reports association success, four-way handshake status zero/stage seven, and
+connection completion status zero. The corrected receive queue has accepted
+hundreds of frames and wrapped its descriptors without stopping.
+
+**Native Wi-Fi is not yet usable by applications.** Transmission, DHCP/IP
+connectivity, full cfg80211/NetworkManager integration, reconnects and boot-time
+startup are unfinished. USB tethering remains the working network. The packet
+frontend has built successfully but has not yet been loaded at this checkpoint.
+
+The source-only checkpoint now includes the current experiments in
+[`wifi-driver/experiments`](../wifi-driver/experiments). Firmware images,
+signature tickets, keys, credentials, device identifiers, raw packet captures,
+logs and disassembly remain private. The source is an experimental progression,
+not an installable production driver; numbered recovery modules have exact
+state guards and must not be loaded as a batch.
+
+What changed:
+
+- Fresh control transport S41 completed twenty queries across ring wrap,
+  station configuration/start and native passive scanning.
+- The running firmware requires a 14-byte global connection TLV; the local
+  older host encoder used 12 bytes. Matching the firmware parser removed
+  status 347 (TLV parsing failure).
+- Restoring the firmware's five connection timeout defaults removed an
+  immediate four-way timeout. Secure association succeeded twice.
+- RX completions use kind 3 for DMA plus metadata. The first receiver rejected
+  this, leaving all 127 buffers consumed; the firmware later aborted. S50
+  accepts the validated descriptor format and continuously reposts buffers.
+- Alpha-only function reset initially failed when reusing the modified working
+  image. S54 restores the boot-populated memswap image with bus mastering off,
+  then republishes it. Firmware recovery and subsequent reconnection succeeded
+  while Linux, tethering and SSH stayed up.
+- S51 opened the default station TX queues. S55 provides a bounded, process-
+  context packet frontend for the next TX/DHCP test; it is compile-checked only.
+
+Current ownership: S19 retains control firmware, Alpha working memory and MSI;
+S49 owns the active Alpha control transport; S50/S51 own active RX/TX DMA.
+S53 is the host-only connection caller. Earlier S41/S44/S46 and both reset
+markers remain pinned. Published DMA must not be force-unloaded or recycled.
+The old BAR4 crash-window reader remains quarantined and was not used. There
+was no new Linux kernel panic in this checkpoint's tests. Exact live state and
+private evidence are recorded in the private workspace's `wifi/RESULTS.md`.
+
+## 2026-09-29 earlier Wi-Fi checkpoint: ROM accepted firmware
+
+The firmware-format pause has been superseded by a live Linux test. N1
+accepted the production signed image (response 1 at about 40 ms), raised
+two MSIs, and reached **preboot execution stage 4** at about 130 ms. It did
+not complete boot or provide Wi-Fi. At that checkpoint it enumerated only as
+`106b:1900`, with no WLAN interface. Phone tethering and Linux stayed
+responsive through the subsequent endpoint-reset attempt described above.
+
+Source, verification results and the next transition are described in
+[`wifi-driver/README.md`](../wifi-driver/README.md). The later source-only checkpoint also includes the power/link/overlay and
+current packet experiments. Signed firmware inputs and raw evidence remain
+private. The earlier ROM test below is historical, not the current limit.
+
+At that earlier checkpoint the next milestone was **port-0-specific
+re-enumeration at preboot**, with
+proper endpoint IRQ/DMA cleanup and restoration of MSI/IOMMU routing. Apple's
+driver deliberately cycles that PCIe port at stage 4. The exact low-level
+Linux sequence remains unfinished; a simple rescan is insufficient.
+The original ROM experiment retained its buffers and IRQ until the private
+S4 experiment safely released them and removed the PCI endpoint. Its module
+text remains pinned. The updated reporting source has been compile-checked
+but was not reloaded. No Wi-Fi boot service was installed.
+
+Recovery still has the earlier tethering constraint: an unattended reboot
+can need the phone unplugged and replugged before the reverse tunnel
+returns. Remote hang recovery is not established. No reboot was performed
+for this firmware test, and no macOS partition was mounted or modified.
+
 ## 2026-09-29 live session: tethering restored, reset still open
 
 The agent ran directly on the helper (MacBook Pro 14" 2021, M1 Pro,
@@ -87,9 +161,9 @@ deliberately rejected with a documented reason, except PR #4's
 
 ### Next
 
-Native Wi-Fi (Apple N1) stage 1: PCIe link and enumeration, planned from
-`audit-2026-09-25/pcie.md`. Remote reset via DebugUSB. CPU start remains
-blocked on reliable reset.
+Superseded for Wi-Fi by the later checkpoint above: PCIe link and ROM
+firmware transfer now have live evidence. Remote reset via DebugUSB and
+CPU start still need reliable reset.
 
 ## 2026-09-29 handoff: both Macs are available
 
