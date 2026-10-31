@@ -1,8 +1,10 @@
 # T6050 secondary-CPU startup
 
-All-core startup remains unresolved. The last hardware result is CPU0 online,
-with the other 17 cores powered on by experiments but never observed entering
-the loader. Everything below was prepared offline. Nothing is installed.
+All-core startup remains unresolved. CPU0 is the only proven core. The latest
+hardware results, from 2026-10-31, are in
+[the live results](../docs/audit-2026-10-31-smp.md), with test source in
+[live/](live/README.md). The ACC `0xe440f8` lead is closed for raw boot because it
+is reported to fault. The rest of this page was prepared offline. Nothing is installed.
 
 ## Prepared changes
 

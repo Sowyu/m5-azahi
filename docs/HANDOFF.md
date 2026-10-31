@@ -1,5 +1,24 @@
 # Handoff for the second Mac
 
+## Current checkpoint: secondary CPU tests, 2026-10-31
+
+Multicore is not fixed; CPU0 is the only proven core. Read
+[the live results](audit-2026-10-31-smp.md) before planning any CPU work. They close
+the ACC lead and list what not to repeat. Installed boot, disk layout and services are
+unchanged. No test module is installed.
+
+Working loop, run from the helper with the debug cable attached:
+
+1. `macvdmtool debugusb` exposes the KIS console without a reset.
+2. Build [`smp/live`](../smp/live/README.md) on the target. Sync, then run one test.
+3. `macvdmtool reboot debugusb`. Wait about 65 s for SSH and verify the services.
+
+That loop is proven for released cores, not for a CPU0 bus hang. Ask someone to stay
+near the power button before trying anything new that might fault.
+
+The most useful next step is asking Aurora's developers how T6050 secondaries are
+released. An SPTM-based boot would be a redesign of storage, Wi-Fi and DMA access.
+
 ## Current checkpoint: power lifecycle and trackpad recovery
 
 Normal Wi-Fi remains selected and working. `azahi-power.service` and

@@ -1,5 +1,23 @@
 # Progress
 
+## 2026-10-31: secondary CPU tests from Linux; still one core
+
+Multicore is **not fixed**. CPU0 is the only proven core. Details are in
+[the live results](docs/audit-2026-10-31-smp.md).
+
+Testing got much cheaper. `macvdmtool reboot debugusb` restarts the target from the
+helper, and Fedora returns in about 65 s with no input, including with secondaries left
+powered on. DebugUSB shows the iBoot and loader console. Recovery from a CPU0 bus hang
+is still unproven.
+
+CPU1, CPU6, CPU12 and all five siblings in cluster 0 power on in microseconds but never
+reach a trap covering the first 1 MiB of the loader image and the sled. A cluster-control
+cycle on cluster 1 did not help. Comparing iBoot and SPTM with T8142 found no T6050-only
+bring-up step. The ACC `0xe440f8` lead is closed: other projects report it faults.
+
+Aurora Silicon lists 18 working cores on this model and documents Linux under a monitor
+with SPTM active, but that release path is not public.
+
 ## 2026-10-31: power lifecycle and trackpad recovery
 
 The installed standalone DT leaves `macsmc-reboot` unbound and exposes no

@@ -604,3 +604,12 @@ input-driver/recovery/test-reset.py
 input-driver/recovery/start-input-recovery.sh
 input-driver/recovery/azahi-input-recovery.service
 input-driver/recovery/README.md
+docs/audit-2026-10-31-smp.md
+smp/live/README.md
+smp/live/Makefile
+smp/live/azahi_smp_ro.c
+smp/live/azahi_smp_t1.c
+smp/live/azahi_smp_t2.c
+smp/live/azahi_smp_t3.c
+smp/live/stub.s
+smp/live/kiscap.py
