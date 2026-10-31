@@ -100,7 +100,7 @@ again:
 static int net_open(struct net_device *dev)
 {
  struct n1_front *s=netdev_priv(dev);
- s->stopping=false;
+ WRITE_ONCE(s->stopping,false);
  netif_start_queue(dev);
  schedule_delayed_work(&s->work,0);
  return 0;
@@ -111,6 +111,9 @@ static int net_stop(struct net_device *dev)
  WRITE_ONCE(s->stopping,true);
  netif_stop_queue(dev); netif_carrier_off(dev);
  cancel_delayed_work_sync(&s->work);
+ /* A poll already in flight may have restored carrier or woken TX before
+  * cancellation joined it. Finish the stop after that worker has exited. */
+ netif_stop_queue(dev); netif_carrier_off(dev);
  skb_queue_purge(&s->tx);
  return 0;
 }

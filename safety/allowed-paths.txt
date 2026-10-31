@@ -551,3 +551,4 @@ wifi-driver/n1-rom-boot.c
 wifi-driver/n1-rom-survey.c
 wifi-driver/n1_fw.py
 wifi-driver/test_n1_fw.py
+wifi-driver/test_lifecycle.py

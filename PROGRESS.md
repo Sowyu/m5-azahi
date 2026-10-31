@@ -1,5 +1,20 @@
 # Progress
 
+## 2026-10-31: native Wi-Fi work resumed, target reconnection pending
+
+The September 30 live checkpoint established signed firmware boot, command
+transport, passive scans, secure WPA2 association and ordinary received
+packets. Native TX, IP connectivity and full Linux wireless integration remain
+unfinished. USB tethering worked at that checkpoint. PR #5 is merged; the
+later Wi-Fi source checkpoint is on the audit branch.
+
+Current offline changes fix the packet frontend's interface-stop race and add
+an explicitly guarded fresh-boot entry to the current transport. Host tests
+and AArch64 object builds pass; these revisions have not run on the target.
+The helper relay address is corrected, with the target endpoint update still
+pending. Shutdown/reboot investigation also awaits live evidence. See the
+[current handoff](docs/HANDOFF.md) and [Wi-Fi details](wifi-driver/README.md).
+
 ## 2026-09-28: offline fixes and exact-kernel builds
 
 No laptop access and nothing installed. The latest source changes, tests,

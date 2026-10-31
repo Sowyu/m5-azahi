@@ -1,5 +1,34 @@
 # Handoff for the second Mac
 
+## 2026-10-31 resumption
+
+The user has resumed native Wi-Fi work and confirmed Fedora and USB tethering
+are ready. The helper relay was still using its previous network address;
+its listener has been corrected while retaining the existing keys and host
+pins. The target tunnel service still needs the matching endpoint update.
+There is no new target session, boot identity or hardware result yet.
+
+Offline preparation fixes S55's interface-stop race: a worker finishing during
+cancellation could restore carrier and wake the TX queue. The callback now
+finishes stopping both after joining the worker. The regression test fails on
+the old callback and passes on the corrected one.
+
+S49 additionally accepts an explicit `fresh=1` mode after a verified fresh S19
+handoff. This requires a null previous owner; the default retains the exact S54
+reset-marker checks. All other hardware preflight checks remain. Host tests
+cover the mutually exclusive owner states and invalid marker combinations.
+Both revised modules compile as AArch64 objects against the saved target
+headers with warnings as errors; neither revision is linked or live-tested.
+
+After access returns, collect the current boot, kernel, modules, routes and
+read-only power-state report before choosing a bring-up path. Do not replay
+the old failure/reset sequence to obtain a transport marker. Next live goals
+are a verified fresh association, first successful TX completions, DHCP and
+interface-bound traffic while preserving tethering. Shutdown/reboot diagnosis
+still awaits current driver bindings and a captured failure stage.
+
+## Historical Wi-Fi checkpoint
+
 **2026-09-30 checkpoint: native N1 now securely associates to a WPA2-PSK/CCMP
 access point and receives ordinary network packets under Linux.** The firmware
 reports association success, four-way handshake status zero/stage seven, and

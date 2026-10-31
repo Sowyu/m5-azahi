@@ -1,5 +1,16 @@
 # Apple N1 bring-up on J714s
 
+**2026-10-31 resumption: offline preparation; no new live Wi-Fi result.**
+S49 now has an explicit `fresh=1` entry for a verified fresh S19 handoff,
+requiring no previous Alpha transport. Its default still requires the exact
+S54 reset marker. The existing PCI, firmware, IPC and IOMMU checks remain.
+S55 now leaves carrier and the TX queue off when an in-flight worker finishes
+during interface shutdown. Host regression tests pass, and both modules compile
+as AArch64 objects against the saved target headers with warnings as errors.
+These revisions have not been linked or loaded on the target. Remote access
+is pending after the helper's network address changed. The September results
+below are historical; the current boot and device ownership remain unverified.
+
 **2026-09-30 checkpoint: native N1 now securely associates to a WPA2-PSK/CCMP
 access point and receives ordinary network packets under Linux.** The firmware
 reports association success, four-way handshake status zero/stage seven, and

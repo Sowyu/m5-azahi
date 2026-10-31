@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0
-/* Alpha IPC and persistent receiver after guarded S54 function reset. S32 ring layout, S40 event
+/* Alpha IPC and persistent receiver after fresh S19 boot or guarded S54 reset. S32 ring layout, S40 event
  * correlation. No old-state adoption or optional debug rings. Published DMA
  * stays pinned until reboot, including every failure after publication. */
 #include <linux/delay.h>
@@ -49,6 +49,9 @@ module_param(scan_results,uint,0444);
 module_param(scan_dwell,uint,0444);
 static bool launch;
 module_param(launch, bool, 0400);
+static bool fresh;
+module_param(fresh, bool, 0400);
+MODULE_PARM_DESC(fresh, "Require fresh S19 handoff with no previous Alpha transport");
 static int result = -EINPROGRESS;
 module_param(result, int, 0444);
 static unsigned int phase, saved, dropped, replies, events, management_frames, debug_frames;
@@ -416,13 +419,23 @@ static int ipc_wait(struct transport *s,u32 want)
 	}
 	return -ETIMEDOUT;
 }
+static bool previous_matches(const struct alpha_restart *previous,
+                             const struct n1_alpha *owner, bool fresh_boot)
+{
+	/* Fresh boot must not adopt any existing owner. The default reset path
+	 * still requires the exact S54 marker and its retained ownership chain. */
+	if (fresh_boot) return !previous;
+	return previous && previous->shared.owner==owner &&
+	       previous->magic==0x533534414c504841ULL &&
+	       !previous->shared.memory && previous->previous;
+}
 static int __init transport_init(void)
 {
 	struct pci_dev *p,*control;
 	struct old_boot *c;
 	struct n1_alpha *a;
 	struct transport *s=NULL;
- struct alpha_restart *previous;
+	struct alpha_restart *previous;
 	struct iommu_domain *domain;
 	u8 *ctx;
 	u16 command;
@@ -439,11 +452,9 @@ static int __init transport_init(void)
 	    p->vendor!=0x106b || p->device!=0x1902 || pci_read_config_word(p,PCI_COMMAND,&command) ||
 	    command!=0x406) goto out;
 	c=pci_get_drvdata(control);
- previous=pci_get_drvdata(p);
+	previous=pci_get_drvdata(p);
 	if (!c || c->pdev!=control || !c->bar || !(a=c->alpha) || a->pdev!=p ||
-	    !a->bar || !a->working || a->old_command || !previous || previous->shared.owner!=a ||
-     previous->magic!=0x533534414c504841ULL || previous->shared.memory ||
-     !previous->previous ||
+	    !a->bar || !a->working || a->old_command || !previous_matches(previous,a,fresh) ||
 	    control->vendor!=0x106b || control->device!=0x1901 ||
 	    atomic_read(&p->enable_cnt)!=1 || !p->msi_enabled || p->msix_enabled ||
 	    pci_irq_vector(p,ALPHA_IRQS-1)<0 || p->current_state!=PCI_D0 ||
@@ -500,7 +511,7 @@ static int __init transport_init(void)
 	mutex_init(&s->command_lock);
 	init_waitqueue_head(&s->wait);
 	INIT_DELAYED_WORK(&receiver_work,poll_transport);
-	pr_info("N1_V9_PREPARED launch=%d rings=1..4 persistent_RX=15_each\n",launch);
+	pr_info("N1_V9_PREPARED launch=%d fresh=%d rings=1..4 persistent_RX=15_each\n",launch,fresh);
 	ret=0;
 	if (!launch) goto free_pool;
 	history=kvcalloc(256,sizeof(*history),GFP_KERNEL);

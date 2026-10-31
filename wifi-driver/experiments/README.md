@@ -4,6 +4,11 @@ These are handwritten Linux modules and protocol encoders, with their original
 numbered dependencies preserved. No Apple firmware or disassembly is included.
 Target: J714s/T6050, kernel `7.0.13-400.asahi.fc44.aarch64+16k`.
 
+Live results in this table are from September 30. On October 31, S49 gained
+an explicit fresh-boot entry and S55 gained an interface-stop race fix. Both
+revisions are host-tested and cross-compiled only; current target state is
+unverified pending remote access.
+
 | Source | State at publication |
 | --- | --- |
 | s0, s1, s2 | N1 GP power/link, private PCIe host and runtime device tree |
@@ -14,7 +19,7 @@ Target: J714s/T6050, kernel `7.0.13-400.asahi.fc44.aarch64+16k`.
 | s45, s53 | Root-only, one-attempt connection submission; PMK never logged |
 | s47, s48 | Host-RAM snapshot; reset with unchanged working image (failed after association) |
 | s54 | Successful reset after restoring the boot-populated memswap image |
-| s49, s52 | Active transport after s54 and bounded query/station/scan caller |
+| s49, s52 | Transport after s54; explicit fresh S19 entry is compile-only; bounded query/station/scan caller |
 | s50, s51 | Active RX and TX queues; real RX observed, TX not yet exercised |
 | s55 | Temporary packet netdev; built, not loaded at this checkpoint |
 | common | Bounded ACI encoders/decoders and TX metadata helpers |
@@ -23,6 +28,17 @@ Target: J714s/T6050, kernel `7.0.13-400.asahi.fc44.aarch64+16k`.
 boot. Its target staging path is an experiment convention, not an installer.
 It stops before starting the main control firmware. All numbered modules have
 specific state assumptions. Do not automate replay of the historical sequence.
+
+S49 defaults to requiring the exact S54 reset marker. `fresh=1` selects the
+fresh S19 handoff and rejects any previous Alpha owner; it performs no reset
+or cleanup. Both modes retain the firmware, PCI and IOMMU preflight. `launch`
+still defaults to false. Select a mode only after verifying the current boot
+and ownership, not to make an unexpected state pass.
+
+Run `python3 wifi-driver/test_lifecycle.py` from the repository root to test
+the actual S49 owner predicate and S55 stop callback with synthetic state.
+The tests do not exercise hardware or substitute for a target build and live
+validation of DMA, packet delivery and shutdown behavior.
 
 Build each module against the exact target kernel headers. Companion modules
 require the corresponding transport `Module.symvers` via
