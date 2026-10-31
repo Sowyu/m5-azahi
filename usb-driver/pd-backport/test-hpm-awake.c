@@ -7,6 +7,8 @@ struct fake {
 	spmi4_u32 reg[128];
 	unsigned int selected, writes, delays, calls;
 	int fail, busy, reject, pending, wrong_state, bad_selector, bad_size;
+	int attach_after, bad_identity_after, state_reads;
+	unsigned int next_state;
 };
 static int xfer(void *ctx, unsigned int op, unsigned int addr,
 		const spmi4_u8 *out, size_t outlen, spmi4_u8 *in, size_t inlen)
@@ -28,6 +30,8 @@ static int xfer(void *ctx, unsigned int op, unsigned int addr,
 	}
 	if (op == 0x20) {
 		assert(addr == 0x20 && inlen == hpm_length(f->selected));
+		if (f->selected == 0x20 && ++f->state_reads == 2 && f->next_state != 7)
+			f->reg[0x20] = f->next_state;
 		for (i = 0; i < inlen; i++) in[i] = f->reg[f->selected] >> (i * 8);
 		return 0;
 	}
@@ -39,6 +43,12 @@ static int xfer(void *ctx, unsigned int op, unsigned int addr,
 		f->reg[8] = f->pending ? 0x53505353 : 0;
 		f->reg[9] = f->reject ? 3 : 0;
 		if (!f->pending && !f->reject && !f->wrong_state) f->reg[0x20] = 0;
+		if (f->attach_after) {
+			f->reg[0x1a] = 0x108280fd;
+			f->reg[0x3f] = 0x0f0d;
+			f->reg[0x5f] = 0x80000073;
+		}
+		if (f->bad_identity_after) f->reg[3] = 0;
 	}
 	return 0;
 }
@@ -48,6 +58,7 @@ static struct fake initial(void)
 	struct fake f = {0};
 	f.reg[3] = 0x20505041; f.reg[0] = 0x28;
 	f.reg[0x1a] = 0x10000000; f.reg[0x20] = 7;
+	f.next_state = 7;
 	return f;
 }
 static struct hpm_io io(struct fake *f) { return (struct hpm_io){.context=f, .xfer=xfer, .delay_ms=delay}; }
@@ -59,23 +70,40 @@ int main(void)
 	assert(!hpm_awake_once(&h, &s, 1)); assert(!s.state && f.writes == 2);
 	assert(!hpm_awake_once(&h, &s, 1)); assert(f.writes == 2);
 	puts("PASS: exact SSPS sequence, readback and already-awake no-op");
-	for (i = 0; i < 32; i++) {
-		f = initial(); h = io(&f); f.reg[0x1a] ^= 1u << i;
-		assert(hpm_awake_once(&h, &s, 1) == -EAGAIN); assert(!f.writes);
+	for (i = 0; i < 2; i++) {
+		f = initial(); h = io(&f);
+		f.reg[0x1a] = 0x1000b41d ^ (i << 4);
+		f.reg[0x3f] = 0x0f3f; f.reg[0x5f] = 0x800000f3;
+		f.attach_after = 1;
+		assert(!hpm_awake_once(&h, &s, 1));
+		assert(f.writes == 2 && !s.state && s.status == 0x108280fd);
+		assert(!hpm_awake_once(&h, &s, 1)); assert(f.writes == 2);
 	}
+	f = initial(); h = io(&f); f.attach_after = 1;
+	assert(!hpm_awake_once(&h, &s, 1)); assert(f.writes == 2 && s.power);
+	puts("PASS: plugged-in boot in either orientation, partner changes during wake, awake no-op");
+	for (i = 1; i < 256; i++) {
+		if (i == 7) continue;
+		f = initial(); h = io(&f); f.reg[0x20] = i;
+		assert(hpm_awake_once(&h, &s, 1) == -EAGAIN); assert(!f.writes && !h.failed);
+	}
+	f = initial(); h = io(&f); f.next_state = 0;
+	assert(!hpm_awake_once(&h, &s, 1)); assert(!f.writes && !s.state);
+	f = initial(); h = io(&f); f.next_state = 3;
+	assert(hpm_awake_once(&h, &s, 1) == -EAGAIN); assert(!f.writes && !h.failed);
 	f = initial(); h = io(&f); assert(hpm_awake_once(&h, &s, 0) == -EAGAIN); assert(!f.writes);
 	f = initial(); h = io(&f); f.reg[0] = 1; assert(hpm_awake_once(&h, &s, 1) == -ENODEV); assert(!f.writes);
-	f = initial(); h = io(&f); f.reg[0x3f] = 1; assert(hpm_awake_once(&h, &s, 1) == -EAGAIN); assert(!f.writes);
-	f = initial(); h = io(&f); f.reg[0x5f] = 1; assert(hpm_awake_once(&h, &s, 1) == -EAGAIN); assert(!f.writes);
+	f = initial(); h = io(&f); f.reg[3] = 0; assert(hpm_awake_once(&h, &s, 1) == -ENODEV); assert(!f.writes);
 	f = initial(); h = io(&f); f.reg[8] = 1; assert(hpm_awake_once(&h, &s, 1) == -EBUSY); assert(!f.writes);
-	puts("PASS: all status-bit deviations, read-only mode, identity, partner and task guards");
-	for (i = 0; i < 5; i++) {
+	puts("PASS: unknown/changed system state, read-only mode, identity and busy task guards");
+	for (i = 0; i < 6; i++) {
 		f = initial(); h = io(&f);
 		if (i == 0) f.fail = 1;
 		if (i == 1) f.busy = 1;
 		if (i == 2) f.reject = 1;
 		if (i == 3) f.pending = 1;
 		if (i == 4) f.wrong_state = 1;
+		if (i == 5) f.bad_identity_after = 1;
 		assert(hpm_awake_once(&h, &s, 1) < 0); assert(h.failed);
 		assert(f.delays <= 100); calls = f.calls;
 		assert(hpm_awake_once(&h, &s, 1) < 0); assert(calls == f.calls);

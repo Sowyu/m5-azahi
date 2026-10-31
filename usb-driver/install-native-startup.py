@@ -16,11 +16,11 @@ PINS = {
     'phy-apple-t6050-usb2.ko': 'c54ffb8d82f966c5a907898e09e0d53fec42904493e42a45999791586f3e0b12',
     'dwc3-apple-t6050.ko': '24b80b4e23f9a0065547df170ca7e6016e93ac7f17a3b47a2b8757636be045ce',
     'azahi-usb-overlay.ko': 'bf9a5c1804f7c37db022d5db46a6f2dd75d4d6490b294e7388271fcd693903b1',
-    'azahi_hpm_once.ko': '7b6d2d80595e2596e63cc64fb11c9525ae10895900169fa2cd05ecc9ee0fb21d',
+    'azahi_hpm_once.ko': '2f225e2ed748ab24ef9da25a3bf46db75001d459a253445bbc97c3b560d1950e',
 }
 # The root-executed script and unit are pinned too; update only after review.
 SOURCE_PINS = {
-    'start-native-usb.sh': '0e5fb5349eee4987da03a88a8b9e5863c886e157946781975db2b85ef2089b67',
+    'start-native-usb.sh': '6944b15c13aa30b8cf5f9aa07d8f5371d469945c27093b57ed76785e1c91f3a0',
     'azahi-usb.service': 'e2c6583a8c6378d61623702af4f0de5d6f68b24a34845d2c0a53946b607cc15f',
 }
 

@@ -140,6 +140,26 @@ handoff with fresh layout/hash/readback checks completed. Tethering remains
 unverified; awaiting native candidate load, phone enumeration and network test.
 No target SSD boot update or daily macOS access. Old RAM pins must not be reused.
 
+## 2026-10-31 native cable-at-boot wake update
+
+The native `hpm-awake.h` path no longer requires an empty port before waking
+state seven. The pinned [SN201202x variant and probe](https://github.com/AsahiLinux/linux/blob/236788cd2602a24c703fe7bdaddaf73ef77d2027/drivers/usb/typec/tipd/core.c)
+select `cd321x_switch_power_state(S0)` before reading and handling an existing
+partner; that routine sends SSPS and verifies system-state readback without an
+attachment restriction. Our earlier empty-port guard was a bring-up restriction.
+The native one-shot now follows that sequence for the observed state seven,
+retaining APP/VID checks, an idle command slot, bounded completion, S0 readback
+and fault latching. It does not send a separate role-swap task. Status/power/data
+remain diagnostic observations; their values may change during wake.
+
+Connected and disconnected mock cases pass under ASan/UBSan, including both
+cable orientations, attachment changes during wake, repeated awake calls,
+unknown/changing system states, busy tasks, identity changes and transport faults.
+The module built against the exact Fedora kernel and the next-boot bundle was
+updated with a backup. The running USB controller was preserved. Real boot-time
+phone enumeration and tethering still need validation. Historical proxy-tool
+experiments and their stricter opt-in guards above remain unchanged.
+
 ## New: default-disabled polling controller prototype
 
 `spmi4-transport.h` implements bounded FIFO transactions using the audited

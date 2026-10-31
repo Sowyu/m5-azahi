@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /* Bounded, one-shot logical HPM protocol shared by host tests and Linux.
- * Only SSPS(S0) from the cable-correlated empty state-7 tuple is permitted.
+ * SSPS(S0) wakes the observed state 7 with or without an attached partner.
  * No reset, power-role swap, IRQ acknowledgement/mask or generic task API.
  */
 #ifndef AZAHI_HPM_AWAKE_H
@@ -88,7 +88,7 @@ static int hpm_snapshot_read(struct hpm_io *h, struct hpm_snapshot *s)
 }
 static int hpm_awake_once(struct hpm_io *h, struct hpm_snapshot *s, int allow_task)
 {
-	spmi4_u32 command, status;
+	spmi4_u32 command, state;
 	spmi4_u8 zero = 0;
 	const spmi4_u8 task[4] = {'S', 'S', 'P', 'S'};
 	unsigned int i;
@@ -97,14 +97,19 @@ static int hpm_awake_once(struct hpm_io *h, struct hpm_snapshot *s, int allow_ta
 	if (s->mode != 0x20505041 || s->vid != 0x28) return -ENODEV;
 	if (s->state == 0) return 0; /* Already awake: no logical write. */
 	if (!allow_task) return -EAGAIN;
-	if (s->state != 7 || s->status != 0x10000000 || s->power || s->data)
-		return -EAGAIN; /* Unplug required; never renegotiate connected power. */
+	/* The pinned tipd SN201202x variant calls cd321x_switch_power_state(S0)
+	 * before handling an existing partner. Attachment/power/data status are
+	 * observations, not prerequisites for SSPS. Requiring an empty port here
+	 * prevented boot with the tether cable attached. Leave role negotiation
+	 * to the controller; this is only the system-power-state task. */
+	if (s->state != 7) return -EAGAIN;
 	ret = hpm_read(h, 8, &command);
 	if (ret) return ret;
 	if (command && command != 0x444d4321) return -EBUSY;
-	ret = hpm_read(h, 0x1a, &status);
+	ret = hpm_read(h, 0x20, &state);
 	if (ret) return ret;
-	if (status != 0x10000000) return -EAGAIN;
+	if (!state) { s->state = 0; return 0; }
+	if (state != 7) return -EAGAIN;
 	ret = hpm_select(h, 9);
 	if (ret) return ret;
 	ret = hpm_xfer(h, 0, 0xa0, &zero, 1, NULL, 0);
@@ -126,8 +131,7 @@ static int hpm_awake_once(struct hpm_io *h, struct hpm_snapshot *s, int allow_ta
 	if (command) { h->failed = 1; return -EIO; }
 	ret = hpm_snapshot_read(h, s);
 	if (ret) return ret;
-	if (s->mode != 0x20505041 || s->vid != 0x28 || s->state || s->power || s->data ||
-	    s->status & ~((1u << 28) | (1u << 5) | (1u << 6))) {
+	if (s->mode != 0x20505041 || s->vid != 0x28 || s->state) {
 		h->failed = 1; return -EIO;
 	}
 	return 0;

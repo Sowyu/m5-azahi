@@ -1,22 +1,22 @@
 # T6050 right-port USB2 candidate
 
-**Experimental source: earlier live tethering worked, but current networking
-is broken and reliability is unresolved.** Automatic azahi-usb startup was
-disabled for a diagnostic boot and has NOT been restored. Current phone
-interface is Imaging, not network; attached HPM probe succeeds. Installed
-boot is v7; old v4/v5 checkpoints below are historical. No new USB driver
-was installed during the latest screenshot-driven tests. User departure
-pauses hardware testing; do not repeat live controller/overlay reloads.
-See [current progress](../PROGRESS.md), [handoff](../docs/HANDOFF.md) and
-[build limitations](../docs/BUILD-AND-TEST.md).
+**2026-10-31: tethering is working in the current Fedora session.** USB startup
+is enabled, with the previously installed phone NO_LPM quirk. Earlier failure
+reports below are historical. Native Wi-Fi still uses tethering for remote access.
 
-2026-09-28 local startup changes, not installed: missing optional USB network
-modules no longer abort host-controller startup. Required DART/DWC3/xHCI
-failures still stop immediately. Failures name their startup stage, and the
-installer's script pin matches the reviewed source. Ten mocked startup and
-installer tests pass. `USB_HOST_READY` still means only that a root hub
-exists, not that an attached device or network works. This does not fix the
-recorded `-71` or Imaging-versus-tethering failure.
+Cable-at-boot wake support is now implemented and installed for the next boot.
+The earlier one-shot HPM path refused to wake with a partner attached. It now
+follows the pinned upstream SN201202x system-state wake sequence, while retaining
+identity, idle-task, timeout, readback and fault checks. It leaves role negotiation
+to the controller. Startup preserves an existing host controller without reload.
+The previous bundle is backed up; **a real cable-attached boot is not yet tested**.
+
+Sanitized transport/protocol tests, eleven mocked startup/installer tests and
+six retry tests pass. The new HPM module built at W=1 against the exact target
+kernel. Missing optional phone network drivers no longer abort host startup;
+required DART/DWC3/xHCI failures still stop immediately. `USB_HOST_READY` means
+only that a root hub exists, not that the phone enabled tethering or obtained IP.
+See [current progress](../PROGRESS.md) and [handoff](../docs/HANDOFF.md).
 
 The [USB2 LPM trace](../docs/audit-2026-09-25/kernel.md#usb2-lpm-policy-gate)
 finds an explicit policy gate in Apple's port driver. Linux can enable LPM

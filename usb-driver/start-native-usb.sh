@@ -48,14 +48,14 @@ fi
 stage=hpm
 if [[ -d $params && $(< "$params/result") = -11 && $(< "$params/poisoned") = N ]]; then
     # A previous clean refusal occurred before any SSPS task. An explicit
-    # service restart may recheck after unplugging. Never recover a bus fault.
+    # service restart may recheck the system state. Never recover a bus fault.
     rmmod azahi_hpm_once
 fi
 if [[ ! -d $params ]]; then
     insmod ./azahi_hpm_once.ko mode=awake
 fi
 if [[ $(< "$params/result") != 0 || $(< "$params/ready") != Y || $(< "$params/poisoned") != N ]]; then
-    echo 'HPM_NOT_READY: no USB load. If clean state-7 refusal, unplug phone and restart azahi-usb.'
+    echo 'HPM_NOT_READY: controller wake did not complete; see HPM_TUPLE and kernel log.'
     exit 1
 fi
 for module in apple-dart dwc3 xhci-plat-hcd; do
@@ -79,7 +79,7 @@ stage=root-hub
 for ((i=0; i<10; i++)); do
     for hub in /sys/bus/usb/devices/usb*; do
         [[ $(readlink -f "$hub") != */382280000.usb/* ]] || {
-            echo 'USB_HOST_READY: connect phone and enable tethering; NetworkManager will autoconnect'
+            echo 'USB_HOST_READY: phone may already be connected; enable tethering for NetworkManager autoconnect'
             exit 0
         }
     done

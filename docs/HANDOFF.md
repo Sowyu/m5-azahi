@@ -35,13 +35,21 @@ connection profile was added. Next investigate native TX framing/queue setup
 and confirm actual packet delivery before retrying DHCP. Full cfg80211
 connection integration, recovery and boot startup also remain.
 
-The user additionally requested tethering when the cable is already connected
-at boot. The installed HPM wake implementation permits its state-seven wake
-only with the verified empty-port tuple; the retry wrapper waits for unplug.
-The current boot reached USB_HOST_READY on its first attempt, so this boot's
-log does not reproduce the connected-state refusal. Implement and validate a
-connected-start path from protocol evidence; do not merely remove the guard or
-reload the live USB controller carrying SSH.
+USB cable-at-boot support is now implemented and installed for the next boot.
+The pinned Asahi SN201202x variant uses `cd321x_switch_power_state(S0)` before
+handling an attached partner. The one-shot driver now sends that same fixed
+SSPS task from the observed state seven with or without a cable. Attachment,
+power and data snapshots no longer impose an empty-port requirement. It keeps
+identity checks, idle-task checks, bounded waits, state-zero verification and
+permanent fault latching. Unknown system states still cleanly refuse.
+
+ASan/UBSan protocol tests cover connected boot in both orientations, attachment
+changes during wake, repeated awake calls, state changes, busy tasks and faults.
+Eleven startup/installer and six retry tests pass. Target W=1 build and vermagic
+verification passed. The old installed bundle and retry wrapper were backed up;
+new checksums and receipt were saved privately. Invoking startup with the live
+controller returned USB_ALREADY_READY, preserving tethering. A real reboot with
+the cable left attached is still needed; do not call this hardware-validated.
 
 The read-only power check confirms `macsmc-reboot` lacks both its OF node and
 bound driver. The Apple watchdog is present and inactive. The device-tree

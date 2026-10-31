@@ -22,8 +22,12 @@ reliable startup/reconnect lifecycle remain unfinished. The power-state check
 also confirms the missing SMC reboot device-tree node and an inactive Apple
 watchdog; this single successful restart does not establish reliability.
 The user also requested USB tethering with the cable attached during boot.
-The current HPM startup deliberately refuses the connected state before wake;
-connected-start handling still needs investigation and validation.
+The HPM wake path now follows the pinned upstream SN201202x SSPS-to-S0
+sequence with a partner attached. Sanitized protocol tests and 17 startup/retry
+tests pass, and the module builds against the exact target kernel. The updated
+bundle is installed for the next boot with its previous version backed up;
+the live USB controller was left running. Cable-at-boot hardware validation
+is still pending.
 See the [current handoff](docs/HANDOFF.md) and [Wi-Fi details](wifi-driver/README.md).
 
 ## 2026-09-28: offline fixes and exact-kernel builds
