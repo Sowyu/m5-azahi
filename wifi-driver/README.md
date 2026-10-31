@@ -27,9 +27,16 @@ S56, so the two must never be loaded in the same boot.
 
 Further counted probes reached the corresponding firmware counter block but
 still did not reach the helper. A fresh secure 2.4 GHz connection also completed
-ten packets before roaming, with no delivery. S58 now totals 28 completions and
+ten packets before roaming, with no delivery. S58 now totals 68 completions and
 zero reported failures. The running statistics layout is verified as an 84-byte
 header and three 268-byte radio blocks; individual counter labels remain limited.
+Offline tracing now confirms the transmit frame/retry fields in the radio
+exchange-done handler. The earlier five/seven/zero-probe windows produce matching
+host frame increments without added host retries or expiry/retry-limit failures.
+This does not establish correct payload delivery. Two radio-capture attempts
+also lacked a successful beacon control and cannot establish absence of RF TX.
+The inbound comparison's first attempt stopped before sending because of a
+helper address-format check; its corrected retry is pending.
 
 S59 performs a bounded native disconnect without owning DMA or resetting the
 chip. A live disconnect/reconnect succeeded. Event `0x80000004` is now correctly

@@ -79,7 +79,23 @@ restores it. Station statistics retained the previous link after disconnect;
 those headers must not authorize carrier independently of connection events.
 S59 owns no DMA; its caller must stop frame producers and verify both TX queues
 are drained. Existing DMA owners remain pinned throughout reconnect.
-Current totals are S51 163/163 and S58 28/28, both with zero reported failures.
+Current totals are S51 163/163 and S58 68/68, both with zero reported failures.
+
+Two attended radio-capture attempts each completed another twenty submissions.
+The second capture also missed its access-point beacon control, so the empty
+captures cannot establish absence of radio transmission. Offline tracing now
+identifies the matching transmit counters in the firmware's radio exchange-done
+handler. The earlier five/seven/zero-probe windows show five/seven/zero host
+frame increments, with no added host retry, expiry or retry-limit counts.
+These aggregate counters strengthen the radio-exchange evidence but do not
+prove correct payloads, decryption, AP forwarding or end-to-end delivery.
+The older host decoder's receive-counter offsets still do not match this image.
+
+A separate inbound comparison is prepared for multicast and both candidate
+station addresses. Its first attempt stopped in the helper's MAC-display
+verification before sending probes; that check is corrected and temporary
+neighbor entries were removed. It is not evidence of a native receive failure.
+The corrected attended test has not yet run at this checkpoint.
 
 Reloading S55 exposed another host bug: starting its event cursor at zero fails
 once the 256-record history rolls over. Initialization now locates the oldest

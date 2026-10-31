@@ -49,6 +49,14 @@ those headers must not authorize carrier independently of connection events.
 S59 owns no DMA; its caller must stop frame producers and verify both TX queues
 are drained. Existing DMA owners remain pinned throughout reconnect.
 
+Two additional twenty-packet tests bring S58 to 68 successful completions.
+The radio capture also missed its beacon control, so it cannot establish
+absence of transmission. Offline tracing places the matching counters in the
+firmware's radio exchange-done handler; the earlier five/seven-packet windows
+show corresponding host frame counts without added host retries. This is
+stronger diagnostic evidence, but correct payload delivery remains unverified.
+An inbound comparison awaits a retry after fixing the helper's address check.
+
 Native TX delivery, DHCP/IP traffic, full Linux wireless integration and a
 reliable startup/reconnect lifecycle remain unfinished. The power-state check
 also confirms the missing SMC reboot device-tree node and an inactive Apple
