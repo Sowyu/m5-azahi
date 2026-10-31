@@ -1,0 +1,16 @@
+[Unit]
+Description=J714s native shutdown and restart support
+After=local-fs.target systemd-modules-load.service
+Before=multi-user.target
+ConditionPathExists=/opt/azahi-power/current/azahi_power.ko
+
+[Service]
+Type=oneshot
+ExecStart=/opt/azahi-power/current/start-power.sh
+RemainAfterExit=yes
+TimeoutStartSec=20
+# The kernel handlers must remain registered through the final power action.
+# No ExecStop or module unload on service stop.
+
+[Install]
+WantedBy=multi-user.target

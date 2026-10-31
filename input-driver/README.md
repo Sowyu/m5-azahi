@@ -1,5 +1,11 @@
 # DockChannel input experiment
 
+**2026-10-31:** the installed baseline now has a tested
+[bounded startup recovery helper](recovery/README.md). A dedicated AFE reset
+followed by one firmware retry restored a failed trackpad, and the user
+confirmed pointer movement/clicks. Recovery is installed at boot. The normal
+replacement-driver candidates described below remain separate and uninstalled.
+
 J714s uses a two-phase v2 interface-power request. The patch sends nine-byte
 requests for the will/has phases and keeps the older board path unchanged.
 The host test checks both OFF/ON encodings, ordering and error propagation.

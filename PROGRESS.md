@@ -1,5 +1,34 @@
 # Progress
 
+## 2026-10-31: power lifecycle and trackpad recovery
+
+The installed standalone DT leaves `macsmc-reboot` unbound and exposes no
+PMU controller. A new [board power driver](power-driver/README.md) validates
+the J714s SMC and primary generation-4 SPMI PMU, records clean shutdown state,
+selects the power-off flag, and registers normal kernel shutdown/restart
+handlers. One normal restart returned automatically with native Wi-Fi/SSH.
+The next normal power-off turned the Mac fully off without the power button.
+The user then powered it on normally and confirmed Fedora and working input.
+A second normal restart also returned automatically with pointer/clicks working.
+The cold-boot logs show the AFE failed initially, then automatic reset/retry
+reached `Touch MT ready` at about ten seconds; power, input, Wi-Fi and tunnel
+services were active, and native HTTPS passed.
+No boot image, APFS object, macOS installation or boot policy was changed.
+
+The restart also exposed the existing intermittent AFE input failure. A plain
+startup retry failed again. Pulsing the DT-declared trackpad reset for 50 ms,
+releasing it and waiting 50 ms before one retry produced `Touch MT ready`.
+The user confirmed pointer movement and clicks. The
+[exact-baseline recovery helper](input-driver/recovery/README.md) now loads
+before the display manager and checks the trackpad once. It uses kernel
+livepatch consistency in HID core, preserves unrelated input devices, and
+never unloads the shared transport or frees its firmware DMA.
+
+Both startup services are installed and enabled. Target W=1 builds and six
+sanitizer-backed protocol/lifecycle/input groups passed. These are bounded
+recovery and tested power operations, not a claim of suspend/resume support
+or proof that intermittent input hardware startup cannot fail again.
+
 ## 2026-10-31: normal Wi-Fi and automatic cold-boot connection verified
 
 The final cold boot loaded S61, connected the saved Wi-Fi profile automatically

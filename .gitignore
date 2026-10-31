@@ -175,3 +175,26 @@ private/
 !/wifi-driver/test_wifi_security.py
 !/wifi-driver/test_wifi_notification.py
 !/wifi-driver/test_wifi_startup.py
+
+# Reviewed power lifecycle and exact-baseline input recovery sources.
+!/power-driver/Makefile
+!/power-driver/power.c
+!/power-driver/pmu-platform.h
+!/power-driver/pmu-transport.h
+!/power-driver/pmu-probe.c
+!/power-driver/smc-final.h
+!/power-driver/test-pmu.c
+!/power-driver/test-smc.c
+!/power-driver/test-lifecycle.py
+!/power-driver/start-power.sh
+!/power-driver/azahi-power.service
+!/power-driver/README.md
+!/input-driver/recovery/Makefile
+!/input-driver/recovery/input-recovery.c
+!/input-driver/recovery/recovery-open.h
+!/input-driver/recovery/test-recovery.c
+!/input-driver/recovery/test-hid-core.py
+!/input-driver/recovery/test-reset.py
+!/input-driver/recovery/start-input-recovery.sh
+!/input-driver/recovery/azahi-input-recovery.service
+!/input-driver/recovery/README.md

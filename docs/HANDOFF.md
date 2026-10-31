@@ -1,6 +1,51 @@
 # Handoff for the second Mac
 
-## Current checkpoint: normal Wi-Fi and cold-boot autoconnect work
+## Current checkpoint: power lifecycle and trackpad recovery
+
+Normal Wi-Fi remains selected and working. `azahi-power.service` and
+`azahi-input-recovery.service` are now installed and enabled. Power support
+lives under `/opt/azahi-power/current`; the input helper lives under
+`/opt/azahi-input/current`. Private build sources are retained on the target.
+Both modules were built against the exact installed Fedora kernel at W=1.
+See [power support](../power-driver/README.md) and
+[input recovery](../input-driver/recovery/README.md) for source, tests and limits.
+
+The SMC reboot child is still absent from the standalone DT. The board driver
+supplies the missing handlers without changing that DT or replacing SMC core.
+It validates primary Abbey PMU boot-state access, holds only its SPMI clock,
+preserves unrelated persistent flag bits and verifies writes. The final SMC
+write is single-shot and uses a 32-bit SRAM store with bounded atomic TX.
+Watchdog restart remains available as fallback. A normal restart returned
+automatically to Fedora with native Wi-Fi and SSH; normal power-off then
+turned the machine fully off by itself. The user powered it on normally and
+confirmed Fedora with a working pointer and trackpad. A second normal restart
+also returned automatically with pointer movement/clicks working. Cold-boot
+logs confirm that initial AFE failure recovered automatically at about ten
+seconds. All four power/input/Wi-Fi/tunnel services were active, with native
+HTTPS verified and no manual repair after boot.
+
+That restart exposed `No HINT_L`/AFE firmware startup failure. The installed
+driver permanently latches `starting`, so later opens cannot recover.
+Retrying its existing firmware/power sequence alone reproduced the failure.
+A 50 ms pulse on the DT-declared active-low AFE reset followed by 50 ms settle
+and one retry succeeded (`Touch MT ready`); the user confirmed pointer/clicks.
+The automatic helper performs this only after missing READY and never touches
+the keyboard reset. It permits one recovery per load and fails visibly after
+errors. Existing firmware DMA allocations remain owned by the transport.
+
+The manually compiled transport has no ftrace entry points, so a direct
+livepatch attempt was rejected and cleanly reverted. The installed helper
+instead patches the supported `hid_hw_open` entry, preserving the original
+locking/counting/callback semantics and dispatching recovery only for this
+exact device and validated input module. Its livepatch transition completed
+normally; no force was used. Never unload/unbind the shared input transport
+or its parent: that old remove path still BUGs. The helper is a bridge until
+the installed input module can be replaced through a normal boot update.
+
+No APFS/boot-policy/firmware image changes were made. Do not infer suspend,
+long-term stability or universal reboot support from these attended checks.
+
+## Previous checkpoint: normal Wi-Fi and cold-boot autoconnect work
 
 Automatic native packet startup was installed and verified through a fresh
 reboot. Native DHCP, Internet and the SSH tunnel returned without tethering.

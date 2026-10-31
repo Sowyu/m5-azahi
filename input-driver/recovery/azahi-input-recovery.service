@@ -1,0 +1,15 @@
+[Unit]
+Description=J714s trackpad startup verification and bounded recovery
+After=local-fs.target systemd-modules-load.service systemd-udev-trigger.service
+Before=display-manager.service multi-user.target
+ConditionPathExists=/opt/azahi-input/current/azahi_input_recovery.ko
+
+[Service]
+Type=oneshot
+ExecStart=/opt/azahi-input/current/start-input-recovery.sh
+RemainAfterExit=yes
+TimeoutStartSec=25
+# Keep the patch registered; never unload the shared input transport.
+
+[Install]
+WantedBy=multi-user.target

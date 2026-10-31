@@ -34,8 +34,11 @@ DHCP, DNS and HTTPS. Reconnect, Wi-Fi off/on, firmware roaming and a 2.49 MB
 integrity-checked download test passed. A connection-notification crash was
 identified and fixed. Normal Wi-Fi now connects automatically after a cold boot;
 native HTTPS and SSH were verified with no tethering or packet fallback.
-A startup readiness race is fixed. Warm restart and power-off remain unreliable:
-one restart reached an Apple boot alert, and power-off required the power button.
+A startup readiness race is fixed. New SMC/PMU power handlers passed two attended
+restarts and a full power-off without holding the power button. A failed trackpad
+startup was recovered using its dedicated reset and one firmware retry; that
+recovery now loads at boot. Both a subsequent cold boot and warm restart reached Fedora with working
+input; the cold boot recovered an AFE startup failure automatically.
 This remains experimental. See [current progress](PROGRESS.md) and
 [the handoff](docs/HANDOFF.md).
 
