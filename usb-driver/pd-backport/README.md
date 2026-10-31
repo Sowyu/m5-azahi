@@ -156,8 +156,10 @@ Connected and disconnected mock cases pass under ASan/UBSan, including both
 cable orientations, attachment changes during wake, repeated awake calls,
 unknown/changing system states, busy tasks, identity changes and transport faults.
 The module built against the exact Fedora kernel and the next-boot bundle was
-updated with a backup. The running USB controller was preserved. Real boot-time
-phone enumeration and tethering still need validation. Historical proxy-tool
+updated with a backup. The running USB controller was preserved. A subsequent
+normal reboot with the cable attached passed: wake and host startup succeeded,
+the phone enumerated, and tethering/SSH returned. This is one successful boot;
+phone-side tethering still needs to be enabled. Historical proxy-tool
 experiments and their stricter opt-in guards above remain unchanged.
 
 ## New: default-disabled polling controller prototype

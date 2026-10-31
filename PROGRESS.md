@@ -26,8 +26,10 @@ The HPM wake path now follows the pinned upstream SN201202x SSPS-to-S0
 sequence with a partner attached. Sanitized protocol tests and 17 startup/retry
 tests pass, and the module builds against the exact target kernel. The updated
 bundle is installed for the next boot with its previous version backed up;
-the live USB controller was left running. Cable-at-boot hardware validation
-is still pending.
+the live USB controller was left running until the next normal restart.
+That restart passed the cable-attached boot test: controller wake succeeded,
+the phone enumerated, RNDIS tethering returned and SSH reconnected. Phone-side
+tethering still needs to be enabled; this is one successful boot validation.
 See the [current handoff](docs/HANDOFF.md) and [Wi-Fi details](wifi-driver/README.md).
 
 ## 2026-09-28: offline fixes and exact-kernel builds

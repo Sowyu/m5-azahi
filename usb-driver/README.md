@@ -4,12 +4,15 @@
 is enabled, with the previously installed phone NO_LPM quirk. Earlier failure
 reports below are historical. Native Wi-Fi still uses tethering for remote access.
 
-Cable-at-boot wake support is now implemented and installed for the next boot.
+Cable-at-boot wake support is now installed and passed one real reboot test.
 The earlier one-shot HPM path refused to wake with a partner attached. It now
 follows the pinned upstream SN201202x system-state wake sequence, while retaining
 identity, idle-task, timeout, readback and fault checks. It leaves role negotiation
 to the controller. Startup preserves an existing host controller without reload.
-The previous bundle is backed up; **a real cable-attached boot is not yet tested**.
+The previous bundle is backed up. With the cable attached during reboot, wake
+and host startup succeeded, the phone enumerated, and RNDIS networking/SSH
+returned after phone-side tethering was enabled. Repeated-boot reliability has
+not yet been measured.
 
 Sanitized transport/protocol tests, eleven mocked startup/installer tests and
 six retry tests pass. The new HPM module built at W=1 against the exact target

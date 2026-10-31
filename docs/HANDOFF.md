@@ -44,7 +44,7 @@ connection profile was added. Next investigate native TX framing/queue setup
 and confirm actual packet delivery before retrying DHCP. Full cfg80211
 connection integration, recovery and boot startup also remain.
 
-USB cable-at-boot support is now implemented and installed for the next boot.
+USB cable-at-boot support is implemented, installed and validated on one reboot.
 The pinned Asahi SN201202x variant uses `cd321x_switch_power_state(S0)` before
 handling an attached partner. The one-shot driver now sends that same fixed
 SSPS task from the observed state seven with or without a cable. Attachment,
@@ -57,8 +57,11 @@ changes during wake, repeated awake calls, state changes, busy tasks and faults.
 Eleven startup/installer and six retry tests pass. Target W=1 build and vermagic
 verification passed. The old installed bundle and retry wrapper were backed up;
 new checksums and receipt were saved privately. Invoking startup with the live
-controller returned USB_ALREADY_READY, preserving tethering. A real reboot with
-the cable left attached is still needed; do not call this hardware-validated.
+controller returned USB_ALREADY_READY, preserving tethering. A subsequent normal
+reboot reached Fedora with the cable attached: HPM wake succeeded, USB startup
+finished on its first attempt, the phone enumerated and RNDIS/SSH returned after
+tethering was enabled. This validates the connected boot path once; it does not
+make the phone retain its tethering setting across reconnects.
 
 The read-only power check confirms `macsmc-reboot` lacks both its OF node and
 bound driver. The Apple watchdog is present and inactive. The device-tree
