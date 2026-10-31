@@ -22,6 +22,15 @@ out. Plain and two-byte-prefixed test packets did not obtain replies; a
 single unicast probe was not received by the helper. These results do not yet
 prove over-the-air delivery or a usable IP path.
 
+A separate multicast/broadcast queue was then opened in unused data-ring slots
+using the native all-broadcast peer and AC3/TID6 settings. Both probes completed
+with status zero but still got no matching ARP/DHCP reply. S56 remains pinned
+alongside S51; no old queue was replaced. Firmware handshake transmit-disabled
+flags are zero. This narrows the investigation without proving packet delivery.
+The new S57 station-counter caller was refused by the existing S49 command
+allowlist before transmission. S49 now has a tested exact-request gate for that
+read-only diagnostic; its rebuilt module awaits fresh-boot validation.
+
 The normal restart reached Fedora and a new boot identity was verified. Signed
 firmware boot, S49 fresh transport, station setup/scan, S50/S51 and secure
 association succeeded again. The current boot has no historical Alpha reset

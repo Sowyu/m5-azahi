@@ -36,6 +36,40 @@ def run_c(source):
 
 
 class LifecycleTests(unittest.TestCase):
+    def test_station_counter_request_is_exact_and_read_only(self):
+        run_c(r'''
+#include <assert.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <stddef.h>
+#include <string.h>
+typedef uint8_t u8;
+static uint16_t get_unaligned_le16(const u8 *p) { return p[0] | (uint16_t)p[1]<<8; }
+static uint64_t get_unaligned_le64(const u8 *p) {
+    uint64_t value=0; unsigned int i;
+    for (i=0;i<8;i++) value |= (uint64_t)p[i]<<(8*i);
+    return value;
+}
+''' + function("s49/n1-alpha-transport-v9.c", "valid_station_counters") + r'''
+int main(void)
+{
+    u8 request[47]={0},changed[47];
+    unsigned int length,byte,bit;
+    request[28]=0x20; request[32]=1;
+    request[33]=0x6b; request[34]=1; request[35]=9;
+    assert(valid_station_counters(request,46,false));
+    assert(!valid_station_counters(NULL,46,false));
+    assert(!valid_station_counters(request,46,true));
+    for (length=0;length<sizeof(request)+1;length++)
+        if (length!=46) assert(!valid_station_counters(request,length,false));
+    for (byte=24;byte<46;byte++) for (bit=0;bit<8;bit++) {
+        memcpy(changed,request,sizeof(request)); changed[byte]^=1u<<bit;
+        assert(!valid_station_counters(changed,46,false));
+    }
+    return 0;
+}
+''')
+
     def test_fresh_and_reset_owners_are_exclusive(self):
         run_c(r'''
 #include <assert.h>

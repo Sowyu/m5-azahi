@@ -25,6 +25,8 @@ The table distinguishes the current path from historical recovery experiments.
 | s49, s52 | Fresh S19 transport verified live; bounded query/station/all-channel passive scan caller |
 | s50, s51 | RX verified; corrected TX decoder accepts live completions, packet delivery still unproven |
 | s55 | Temporary packet netdev registered live; no native IP result yet |
+| s56 | Separate MCBC queue accepted live; two broadcast probes completed but got no reply |
+| s57 | Exact station-counter query caller; revised S49 support built/tested, fresh-boot validation pending |
 | common | Bounded ACI encoders/decoders and TX metadata helpers |
 
 `preboot-fresh-boot.sh` is an explicit runtime bring-up script for a fresh target
@@ -39,7 +41,7 @@ still defaults to false. Select a mode only after verifying the current boot
 and ownership, not to make an unexpected state pass.
 
 Run `python3 wifi-driver/test_lifecycle.py` from the repository root to test
-the actual S49 owner predicate and S55 stop callback with synthetic state.
+the actual S49 owner predicate, exact station-counter request gate and S55 stop callback with synthetic state.
 The tests do not exercise hardware or substitute for a target build and live
 validation of DMA, packet delivery and shutdown behavior.
 
@@ -55,7 +57,7 @@ cc -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined \
 
 Build each module against the exact target kernel headers. Companion modules
 require the corresponding transport `Module.symvers` via
-`KBUILD_EXTRA_SYMBOLS`. S55 additionally needs S50 and S51 symbols; S48/S54
+`KBUILD_EXTRA_SYMBOLS`. S55 additionally needs S50 and S51 symbols; S56 needs S49 and S51, and S57 needs S49; S48/S54
 need S41, S44 and S46 symbols. Keep the directory layout for relative headers.
 The top-level `wifi-driver/Kbuild` builds the earlier ROM experiments only.
 
@@ -75,3 +77,16 @@ Remaining: TX packet delivery, IP configuration and end-to-end traffic, a proper
 cfg80211 connection interface, bounded high-rate RX delivery, reconnect/reboot
 lifecycle and power management. The temporary Ethernet frontend is a packet
 validation tool and does not replace Linux wireless integration.
+
+The MCBC probe uses separate data-ring slots and the native broadcast peer,
+AC3/TID6 client data. It retains every published allocation. Its root-only proc
+write accepts one bounded multicast Ethernet frame; it is not connected to the
+packet netdev. S56 has an exact checkpoint guard, not a reusable loader.
+The default station queue's zero peer address was also confirmed in the native
+setup, so neither peer form has been identified as the missing IP-path fix.
+
+S57 requests only global station-counter source 37 with one scope TLV. The
+previous loaded S49 refused it before submission; the revised S49 admits only
+the exact 46-byte request, with ACK-only completion disabled. Host tests reject
+truncation, extra data and every single-bit change to its payload. A fresh boot
+is required to use the rebuilt DMA-owning S49; do not patch or force-unload it.

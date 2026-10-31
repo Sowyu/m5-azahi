@@ -287,6 +287,15 @@ static void poll_transport(struct work_struct *work)
 	mutex_unlock(&s->io_lock);
 	if (!result) schedule_delayed_work(&receiver_work,msecs_to_jiffies(1));
 }
+/* Native global station-counter query: one source bit and one scope TLV.
+ * Keep diagnostics bounded; never accept an arbitrary statistics request. */
+static bool valid_station_counters(const u8 *r,size_t length,bool accept_ack)
+{
+ return r && length==46 && !accept_ack &&
+  get_unaligned_le64(r+24)==(1ULL<<37) && r[32]==1 &&
+  get_unaligned_le16(r+33)==0x16b && get_unaligned_le16(r+35)==9 &&
+  !get_unaligned_le64(r+37) && !r[45];
+}
 int n1_alpha_exchange_v9(const void *request, size_t length, void *response,
     size_t *response_length, bool accept_ack)
 {
@@ -300,9 +309,10 @@ int n1_alpha_exchange_v9(const void *request, size_t length, void *response,
 	    get_unaligned_le16(r+16)!=length || !get_unaligned_le16(r+18)) return -EINVAL;
 	cid=get_unaligned_le32(r+20);
 	if (cid!=0 && cid!=1 && cid!=2 && cid!=8 && cid!=10 && cid!=19 && cid!=47 && cid!=0x1000f &&
-        cid!=0x1c && cid!=0x20000 && cid!=0x20001)
+        cid!=0x1c && cid!=0x20000 && cid!=0x20001 && cid!=0xb0001)
 		return -EOPNOTSUPP;
 	if (r[0] || r[1] || r[12] || r[13]) return -EINVAL;
+	if (cid==0xb0001 && !valid_station_counters(r,length,accept_ack)) return -EINVAL;
     if ((cid==0x1c && (length!=25 || r[24]!=0x3f)) ||
         (cid==0x20000 && (length<207 || length>269)) ||
         (cid==0x20001 && length!=40)) return -EINVAL;
