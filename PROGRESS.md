@@ -1,6 +1,11 @@
 # Progress
 
-## 2026-10-31: normal Wi-Fi data and lifecycle checks pass; boot check pending
+## 2026-10-31: normal Wi-Fi and automatic cold-boot connection verified
+
+The final cold boot loaded S61, connected the saved Wi-Fi profile automatically
+and obtained DHCP. HTTPS and the SSH tunnel worked through the normal Wi-Fi
+interface, with no tether interface and no S55 packet fallback. Firmware then
+roamed to 5 GHz successfully. All three transport status values remained zero.
 
 The native packet frontend now starts automatically on the installed, pinned
 kernel. A fresh reboot reached DHCP and Internet connectivity without tethering;
@@ -39,9 +44,10 @@ so the loader immediately used the working S55 fallback. Startup now waits up
 to ten seconds for the matching Wi-Fi device's NetworkManager state to become
 ready, then activates the profile on that interface. Tests of the actual shell
 function cover delayed readiness, an already connected interface and bounded
-unavailable/failed timeouts. The fix is installed; another cold-boot check is
-pending. The warm-restart alert's cause remains unresolved. No macOS, APFS boot
-image or boot-policy change was made in this update.
+unavailable/failed timeouts. The fix is installed and the next cold-boot check
+passed, as recorded above. Warm restart remains unresolved, and a clean
+power-off request still required the power button to finish turning off.
+No macOS, APFS boot image or boot-policy change was made in this update.
 
 S49 now maintains connection evidence independently of its bounded diagnostic
 history. S50 can deliver host copies directly to one registered consumer, with
@@ -52,9 +58,8 @@ encoder passed 76 private native-code comparisons; those fixtures remain private
 Target W=1 builds passed for the transport/frontend bundle, including the new
 connection-stage diagnostics and notification correction.
 
-Remaining: verify the readiness fix through cfg80211 automatic startup and
-investigate the warm-restart alert.
-Long-duration stability, general LAN destination handling, IPv6 and power
+Remaining: investigate warm restart and power-off. Long-duration stability,
+general LAN destination handling, IPv6 and power
 management remain unfinished. Supported station security is open or WPA2-PSK
 with CCMP; WPA3, enterprise and hidden-SSID active discovery are not implemented.
 

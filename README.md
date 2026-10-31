@@ -32,10 +32,10 @@ a daily-use machine. Never use the reference disk geometry on another SSD.**
 Native N1 now appears as Wi-Fi in NetworkManager, scans 2.4/5 GHz and carries
 DHCP, DNS and HTTPS. Reconnect, Wi-Fi off/on, firmware roaming and a 2.49 MB
 integrity-checked download test passed. A connection-notification crash was
-identified and fixed. The packet frontend's automatic startup passed a fresh
-boot. A warm restart reached an Apple boot alert; a full power-off recovered
-Fedora. Normal Wi-Fi startup exposed a NetworkManager readiness race, now fixed
-with a bounded readiness check; its next cold-boot verification is pending.
+identified and fixed. Normal Wi-Fi now connects automatically after a cold boot;
+native HTTPS and SSH were verified with no tethering or packet fallback.
+A startup readiness race is fixed. Warm restart and power-off remain unreliable:
+one restart reached an Apple boot alert, and power-off required the power button.
 This remains experimental. See [current progress](PROGRESS.md) and
 [the handoff](docs/HANDOFF.md).
 

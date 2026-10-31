@@ -16,10 +16,10 @@ S61 registers a cfg80211 station with passive 2.4/5 GHz scanning. DHCP/HTTPS,
 reconnect, radio off/on, roaming and direct RX under a 2.49 MB download test are
 verified. A missing BSSID in the connection-success notification caused a kernel
 fault; the corrected notification and regression test are included. Installed
-boot selection is now S61. A warm restart reached an Apple boot alert; cold boot
-recovered Fedora but exposed a NetworkManager readiness race and used S55.
-The startup script now waits for the matching Wi-Fi device to become ready;
-its cold-boot verification is pending. See the handoff.
+boot selection is now S61. The startup script waits for NetworkManager readiness;
+a cold boot then connected automatically and carried native HTTPS/SSH with no
+tether interface or packet fallback. Warm restart and power-off remain unreliable;
+see the handoff for the observed Apple boot alert and power-button recovery.
 
 | Source | State at publication |
 | --- | --- |
@@ -36,7 +36,7 @@ its cold-boot verification is pending. See the handoff.
 | s55 | Opt-in `llc_tx=1`: native DHCP, DNS, ICMP and HTTPS verified |
 | s56 | Separate MCBC queue accepted live; two broadcast probes completed but got no reply |
 | s57 | Exact station-counter query validated live; link headers can remain stale after disconnect |
-| s61 | Normal Wi-Fi scans, DHCP/HTTPS, reconnect, roaming and host-only recovery verified; boot verification pending |
+| s61 | Normal Wi-Fi scans, DHCP/HTTPS, reconnect, roaming, host-only recovery and cold-boot autoconnect verified |
 | s62 | Host-only disconnect helper for the fresh single-TX-ring bundle; caller must remove all packet frontends |
 | common | Bounded ACI encoders/decoders and TX metadata helpers |
 
@@ -101,8 +101,8 @@ S41–S55 used in this checkpoint. Missing optional BTF tooling was the only bui
 notice. Connection/metadata encoders were additionally compared privately with
 isolated native instructions and the running firmware's TLV parser.
 
-Remaining: general LAN destination handling, IPv6 validation, automatic
-cfg80211 boot verification, extended load/stability checks and power management.
+Remaining: general LAN destination handling, IPv6 validation, warm restart,
+power-off, extended load/stability checks and power management.
 The temporary Ethernet frontend remains a packet validation/recovery tool;
 S61 supplies the wireless integration for open/WPA2-PSK CCMP networks.
 

@@ -1,11 +1,14 @@
 # Handoff for the second Mac
 
-## Current checkpoint: cfg80211 networking works; boot alert under investigation
+## Current checkpoint: normal Wi-Fi and cold-boot autoconnect work
 
 Automatic native packet startup was installed and verified through a fresh
 reboot. Native DHCP, Internet and the SSH tunnel returned without tethering.
-The loader now selects the validated live S61 frontend, with S55 as fallback;
-automatic S61 startup has not yet completed its boot check.
+The loader now selects S61, with S55 as fallback. The final cold boot connected
+through S61 automatically; DHCP, HTTPS and native SSH passed with neither a
+tether interface nor the packet fallback present. S61 then reported a successful
+firmware roam to 5 GHz. S19/S49/S50/S51 remain the retained DMA owners, S61 is
+the active host frontend, and all transport status values are zero.
 The fresh boot has S19/S49/S50/S51 DMA owners; the historical S58/S60 experiments
 were retired by reboot. Never infer current owners from older notes below.
 
@@ -41,13 +44,14 @@ raced supplicant readiness by four milliseconds and fell back to healthy S55.
 The installed startup script now identifies the Wi-Fi interface by its saved
 station address and waits for NetworkManager readiness before activation.
 The actual shell function passes delayed-ready and bounded-timeout tests.
-Another clean shutdown/cold boot was requested to verify this change; the
-result is pending and SSH is unavailable while the target is down.
+The next cold boot verified this change: the startup service completed with
+native cfg80211 Wi-Fi active. No manual connection command was issued after
+boot. The clean shutdown still needed the power button to finish turning off.
 
 No APFS boot object, macOS installation or boot policy was modified. Do not
-reinstall or alter those based solely on the alert. Next verify the startup
-service, normal Wi-Fi netdev and native HTTPS on the new boot. Warm-restart
-reliability remains unresolved; do not claim it was fixed by the readiness gate.
+reinstall or alter those based solely on the alert. Warm-restart and power-off
+reliability remain unresolved; do not claim they were fixed by the readiness
+gate. Preserve this working Wi-Fi session while investigating those separately.
 
 Temporary diagnostic panic settings were restored to their original values;
 rollback timers are stopped. Firmware, captures and kernel logs stay private.
