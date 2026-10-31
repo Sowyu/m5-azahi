@@ -9,6 +9,16 @@ matched the helper capture. A Linux UDP socket then received nine marked
 multicast controls through S55, but its replies did not reach the helper.
 Native receive delivery is demonstrated; bidirectional networking is not.
 
+A paired payload-alignment experiment now also runs on a separate AC2/TID4
+queue (S60). Three identical-frame pairs at DMA offsets zero and two completed
+successfully, but neither alignment reached the helper; its tethered control
+did. The target W=1 build, non-launching preparation and invalid-input checks
+passed. S60 is a pinned DMA owner with six submissions and six completions;
+its ring slots must remain reserved until normal reboot. Offline comparisons
+also verified 64 complete native TX entries, including metadata initialization
+and placement. These results rule out those tested layout/alignment changes as
+fixes; transmit delivery remains unresolved.
+
 Remote access is restored. A fresh target boot successfully ran signed firmware,
 S49's guarded fresh transport, station setup, passive scanning, secure WPA2
 association and continuous packet reception. Current S49–S55 modules build on

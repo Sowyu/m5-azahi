@@ -7,6 +7,16 @@ address received none. All ten received Ethernet frames matched the helper
 capture byte for byte. With S55 restored to the base address, a Linux UDP socket
 received nine multicast controls; none of its replies reached the helper.
 
+A paired payload-alignment experiment now also runs on a separate AC2/TID4
+queue (S60). Three identical-frame pairs at DMA offsets zero and two completed
+successfully, but neither alignment reached the helper; its tethered control
+did. The target W=1 build, non-launching preparation and invalid-input checks
+passed. S60 is a pinned DMA owner with six submissions and six completions;
+its ring slots must remain reserved until normal reboot. Offline comparisons
+also verified 64 complete native TX entries, including metadata initialization
+and placement. These results rule out those tested layout/alignment changes as
+fixes; transmit delivery remains unresolved.
+
 Remote access returned, and the current modules built on the target at W=1.
 S49's fresh entry, station setup, passive scan, secure WPA2 association and
 continuous receive traffic succeeded. S55 registered its packet interface.
