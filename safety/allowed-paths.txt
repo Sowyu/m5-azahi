@@ -559,3 +559,6 @@ wifi-driver/experiments/s56/n1-mcbc-api.h
 wifi-driver/experiments/s56/Kbuild
 wifi-driver/experiments/s57/n1-alpha-sta-counters.c
 wifi-driver/experiments/s57/Kbuild
+wifi-driver/experiments/s58/n1-alpha-data-ac1.c
+wifi-driver/experiments/s58/n1-ac1-api.h
+wifi-driver/experiments/s58/Kbuild

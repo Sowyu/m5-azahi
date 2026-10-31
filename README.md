@@ -30,7 +30,7 @@ a daily-use machine. Never use the reference disk geometry on another SSD.**
 ## Current checkpoint, 2026-10-31
 
 Fedora and SSH over USB tethering are running. Tethering with the cable attached
-at boot is implemented and passed one reboot test; phone-side tethering still
+at boot is implemented and passed two reboot tests; phone-side tethering still
 needs to be enabled. Native N1 firmware boot, scanning, secure association,
 packet reception and transmit completions work experimentally. Native IP
 connectivity remains unresolved, and the Wi-Fi driver is not ready for daily

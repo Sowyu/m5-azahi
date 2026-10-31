@@ -42,7 +42,26 @@ updated for that observed transport state; it is not a generic startup module.
 
 S49 and S52 now also include the native payload-free interface-status query.
 Its gate rejects flags, non-exact lengths and ACK-only completion. Host tests
-and the target W=1 build pass; live validation requires a fresh transport owner.
+and the target W=1 build pass. After a normal restart, the live query returned
+a successful 774-byte response containing the configured address, network,
+security and BSS information. The station-counter query still reports a
+different active per-link address; neither address has delivered our probes.
+
+IPv6 link-local testing also failed, including helper-directed unicast with a
+static neighbor entry to bypass address resolution. The receiver captured the
+helper's neighbor solicitations, but the helper did not receive our replies.
+A bounded helper packet capture saw both tethered controls and none of the
+native ARP, DHCP or UDP probes. This places the loss before receipt on the
+helper interface; it does not identify the failing firmware or AP stage.
+
+S58 tests a second station queue opened after association, using the native
+AC1/TID2 mapping, zero peer filter and otherwise unchanged packet metadata.
+Its target W=1 build and guarded preparation passed. Both queue-open commands
+succeeded, and all six unicast probes completed with firmware status zero,
+but the helper received none. S51 also remains healthy at 163 submissions and
+163 completions. This is a negative diagnostic result, not a TX fix. S58 uses
+the same spare slots as S56; never load both in one boot. S58 is now a pinned
+DMA owner alongside S19/S49/S50/S51 and must not be force-unloaded.
 
 Reloading S55 exposed another host bug: starting its event cursor at zero fails
 once the 256-record history rolls over. Initialization now locates the oldest
@@ -57,14 +76,14 @@ association succeeded again. The current boot has no historical Alpha reset
 chain. The stopped old driver was released by reboot; no DMA owner was
 force-unloaded. Private records identify exact source builds and boot state.
 
-The temporary native interface is unmanaged, up, and has IPv6 disabled and no
+The temporary native interface is unmanaged, down, and has IPv6 disabled and no
 IP address. The failed temporary DHCP profile was removed. A runtime helper
 host route stays pinned through tethering. No persistent Wi-Fi service or
 connection profile was added. Next investigate native TX framing/queue setup
 and confirm actual packet delivery before retrying DHCP. Full cfg80211
 connection integration, recovery and boot startup also remain.
 
-USB cable-at-boot support is implemented, installed and validated on one reboot.
+USB cable-at-boot support is implemented, installed and validated on two reboots.
 The pinned Asahi SN201202x variant uses `cd321x_switch_power_state(S0)` before
 handling an attached partner. The one-shot driver now sends that same fixed
 SSPS task from the observed state seven with or without a cable. Attachment,
@@ -80,7 +99,9 @@ new checksums and receipt were saved privately. Invoking startup with the live
 controller returned USB_ALREADY_READY, preserving tethering. A subsequent normal
 reboot reached Fedora with the cable attached: HPM wake succeeded, USB startup
 finished on its first attempt, the phone enumerated and RNDIS/SSH returned after
-tethering was enabled. This validates the connected boot path once; it does not
+tethering was enabled. A second normal restart again completed USB startup on
+its first attempt with the cable attached. These tests validate two normal
+restarts, not a cold power-on, and do not
 make the phone retain its tethering setting across reconnects.
 
 The read-only power check confirms `macsmc-reboot` lacks both its OF node and

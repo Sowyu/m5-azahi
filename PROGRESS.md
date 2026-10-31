@@ -24,6 +24,14 @@ control did. S55's initial event-history rollover bug is fixed and tested: it
 replays retained events, requires a successful connection, and keeps runtime
 history loss fatal. The corrected frontend rebuilt and reloaded successfully.
 
+The interface-status query has now succeeded on hardware. A bounded helper
+capture saw the tethered controls but no native probes, including IPv6 traffic
+sent with a static neighbor entry. A separate station AC1/TID2 queue opened
+after association also accepted and completed six packets without delivering
+them to the helper. These negative tests narrow the investigation; they do not
+establish an over-the-air transmit path. The new queue source is S58 and remains
+pinned with the other DMA owners until reboot.
+
 Native TX delivery, DHCP/IP traffic, full Linux wireless integration and a
 reliable startup/reconnect lifecycle remain unfinished. The power-state check
 also confirms the missing SMC reboot device-tree node and an inactive Apple
@@ -36,7 +44,8 @@ bundle is installed for the next boot with its previous version backed up;
 the live USB controller was left running until the next normal restart.
 That restart passed the cable-attached boot test: controller wake succeeded,
 the phone enumerated, RNDIS tethering returned and SSH reconnected. Phone-side
-tethering still needs to be enabled; this is one successful boot validation.
+tethering still needs to be enabled. A second cable-attached restart again
+completed USB startup on its first attempt. Cold power-on remains untested.
 See the [current handoff](docs/HANDOFF.md) and [Wi-Fi details](wifi-driver/README.md).
 
 ## 2026-09-28: offline fixes and exact-kernel builds

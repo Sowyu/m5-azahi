@@ -18,6 +18,13 @@ packet delivery. S55 now handles initialization after history rollover while
 still requiring retained connection evidence and stopping on runtime history
 loss. Four host tests, the target W=1 build and a live frontend reload passed.
 
+The interface-status query is also validated live. Helper packet capture and
+IPv6 probes with a static neighbor entry still show no native delivery. S58
+opens a separate station AC1/TID2 queue after association; all six probes
+completed successfully but none arrived. This source records a negative
+experiment, not working TX. It retains its DMA and shares spare ring slots with
+S56, so the two must never be loaded in the same boot.
+
 The September sections below are historical; their retained reset owners and
 compile-only frontend status do not describe the October fresh-boot test.
 
