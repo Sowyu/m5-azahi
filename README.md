@@ -27,7 +27,16 @@ Policy: [Asahi Linux — Generative AI (LLM) Policy](https://asahilinux.org/llm-
 **Not ready for general installation. Do not run these drivers or boot tools on
 a daily-use machine. Never use the reference disk geometry on another SSD.**
 
-## Status, 2026-09-28 (hardware state last observed 2026-09-13)
+## Current checkpoint, 2026-10-31
+
+Fedora and SSH over USB tethering are running. Tethering with the cable attached
+at boot is implemented and passed one reboot test; phone-side tethering still
+needs to be enabled. Native N1 firmware boot, scanning, secure association,
+packet reception and transmit completions work experimentally. Native IP
+connectivity remains unresolved, and the Wi-Fi driver is not ready for daily
+use. See [current progress](PROGRESS.md) and [the handoff](docs/HANDOFF.md).
+
+## Historical status, 2026-09-28 (hardware observed 2026-09-13)
 
 | Component | Evidence so far |
 | --- | --- |
@@ -60,7 +69,7 @@ the exact recovered devel RPM. These changes are uninstalled and do
 not establish a working daily driver.
 Publication is guarded by [default-deny ignores and index/history checks](docs/PUBLICATION-SAFETY.md).
 
-**Last observed hardware state, September 13:** KDE booted, but the phone did
+**Historical hardware state, September 13:** KDE booted, but the phone did
 not expose a working network interface. USB automatic startup was deliberately
 disabled for a delayed-start experiment and remained disabled at last check.
 Both automatic and delayed manual startup failed to provide reliable internet.

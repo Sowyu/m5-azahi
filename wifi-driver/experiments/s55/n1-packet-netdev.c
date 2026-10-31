@@ -24,6 +24,28 @@ struct n1_front {
 static struct net_device *active;
 static char *mac;
 module_param(mac,charp,0400);
+/* Find the retained history boundary through the existing read API. This is
+ * initialization only: events() must still find a successful connection and
+ * process every later event. Lost history while running remains fatal.
+ * Concurrent rollover can make the following replay fail closed; it cannot
+ * authorize carrier without a retained successful connect-complete event.
+ */
+static int initial_event_cursor(struct n1_front *s)
+{
+ unsigned int low=0,high=~0U,index,ring;
+ size_t len;
+ int ret;
+ while(low<high) {
+  index=low+(high-low)/2;
+  len=sizeof(s->event);
+  ret=n1_alpha_record_v9(index,&ring,s->event,&len);
+  if(ret==-EOVERFLOW) low=index+1;
+  else if(!ret || ret==-ENOENT) high=index;
+  else return ret;
+ }
+ s->event_cursor=low;
+ return 0;
+}
 static int events(struct n1_front *s)
 {
  unsigned int n,ring;
@@ -141,7 +163,8 @@ static int __init front_init(void)
  if(!active) return -ENOMEM;
  s=netdev_priv(active); s->dev=active; s->rx_cursor=count;
  skb_queue_head_init(&s->tx); INIT_DELAYED_WORK(&s->work,io_work);
- ret=events(s);
+ ret=initial_event_cursor(s);
+ if(!ret) ret=events(s);
  if(ret || !s->linked) { free_netdev(active); active=NULL; return ret?ret:-ENOLINK; }
  active->netdev_ops=&net_ops; active->min_mtu=68; active->max_mtu=1500;
  eth_hw_addr_set(active,addr); netif_carrier_off(active);

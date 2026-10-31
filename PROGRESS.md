@@ -17,6 +17,13 @@ with firmware result zero. RX exceeded one thousand packets without stopping.
 ARP received no reply and temporary NetworkManager DHCP timed out. Completion
 success alone has not established packet delivery or native IP connectivity.
 
+The bounded station-counter query is now validated live. Firmware link addresses
+differ from the base address, but using the current address did not restore
+ARP/DHCP. Helper-directed native probes also did not arrive, while the tethered
+control did. S55's initial event-history rollover bug is fixed and tested: it
+replays retained events, requires a successful connection, and keeps runtime
+history loss fatal. The corrected frontend rebuilt and reloaded successfully.
+
 Native TX delivery, DHCP/IP traffic, full Linux wireless integration and a
 reliable startup/reconnect lifecycle remain unfinished. The power-state check
 also confirms the missing SMC reboot device-tree node and an inactive Apple

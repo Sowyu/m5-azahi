@@ -12,6 +12,12 @@ boot, repeated TX submissions completed with firmware success and RX remained
 stable. ARP received no reply and DHCP timed out. **Native IP traffic has not
 yet been demonstrated.** See the [current handoff](../docs/HANDOFF.md).
 
+The station-counter query also succeeds after a fresh boot. Its link header
+exposes the current link address; matching that address in Linux did not fix
+packet delivery. S55 now handles initialization after history rollover while
+still requiring retained connection evidence and stopping on runtime history
+loss. Four host tests, the target W=1 build and a live frontend reload passed.
+
 The September sections below are historical; their retained reset owners and
 compile-only frontend status do not describe the October fresh-boot test.
 

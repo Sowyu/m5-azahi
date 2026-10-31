@@ -31,11 +31,73 @@ def run_c(source):
         src.write_text(source)
         compiler = shlex.split(os.environ.get("CC", "cc"))
         subprocess.run(compiler + ["-std=c11", "-Wall", "-Wextra", "-Werror",
+                                  "-I", str(SOURCE / "common"),
                                   str(src), "-o", str(exe)], check=True)
         subprocess.run([str(exe)], check=True)
 
 
 class LifecycleTests(unittest.TestCase):
+    def test_frontend_replays_retained_history_without_assuming_link(self):
+        run_c(r'''
+#include <assert.h>
+#include <stdbool.h>
+#include "n1-aci-events.h"
+struct n1_front { unsigned int event_cursor; bool linked; unsigned char event[4096]; };
+static unsigned int saved, connect_at, lost_at, calls;
+static bool connect_ok, roll_after_search;
+static int forced_error;
+static int n1_alpha_record_v9(unsigned int index, unsigned int *ring,
+                             void *data, size_t *length)
+{
+    unsigned char *p=data;
+    unsigned int cid=0x80000099U, len=24;
+    calls++;
+    if (forced_error) return forced_error;
+    if (index>=saved) return -ENOENT;
+    if (saved-index>256) return -EOVERFLOW;
+    if (roll_after_search) return -EOVERFLOW;
+    if (index==connect_at) { cid=0x80000000U; len=114; }
+    if (index==lost_at) { cid=0x80000003U; len=31; }
+    assert(*length>=len); memset(p,0,len); *length=len; *ring=0;
+    p[0]=0x43; p[1]=24; p[16]=len;
+    if (index==connect_at && !connect_ok) p[14]=1;
+    p[20]=cid; p[21]=cid>>8; p[22]=cid>>16; p[23]=cid>>24;
+    return 0;
+}
+''' + function("s55/n1-packet-netdev.c", "initial_event_cursor") +
+              function("s55/n1-packet-netdev.c", "events") + r'''
+int main(void)
+{
+    unsigned int counts[]={0,1,255,256,257,292,4096,0xfffffffeU}, i;
+    for (i=0;i<sizeof(counts)/sizeof(counts[0]);i++) {
+        struct n1_front s={0};
+        saved=counts[i]; calls=0; connect_at=lost_at=~0U;
+        assert(initial_event_cursor(&s)==0);
+        assert(calls<=32 && s.event_cursor==(saved>256?saved-256:0));
+        assert(events(&s)==0 && !s.linked);
+    }
+    for (i=0;i<4;i++) {
+        struct n1_front s={0};
+        saved=292; connect_at=i==0?35:100; connect_ok=i!=1;
+        lost_at=i==2?101:~0U;
+        assert(initial_event_cursor(&s)==0 && s.event_cursor==36);
+        assert(events(&s)==0 && s.linked==(i==3));
+    }
+    {
+        struct n1_front s={0};
+        saved=292; assert(initial_event_cursor(&s)==0);
+        roll_after_search=true;
+        assert(events(&s)==-EOVERFLOW && !s.linked);
+        roll_after_search=false;
+        s.event_cursor=0; s.linked=true;
+        assert(events(&s)==-EOVERFLOW); /* running reader cannot skip loss */
+        forced_error=-EIO;
+        assert(initial_event_cursor(&s)==-EIO);
+    }
+    return 0;
+}
+''')
+
     def test_station_counter_request_is_exact_and_read_only(self):
         run_c(r'''
 #include <assert.h>

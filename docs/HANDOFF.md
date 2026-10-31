@@ -24,12 +24,25 @@ prove over-the-air delivery or a usable IP path.
 
 A separate multicast/broadcast queue was then opened in unused data-ring slots
 using the native all-broadcast peer and AC3/TID6 settings. Both probes completed
-with status zero but still got no matching ARP/DHCP reply. S56 remains pinned
-alongside S51; no old queue was replaced. Firmware handshake transmit-disabled
+with status zero but still got no matching ARP/DHCP reply. S56 stayed pinned
+alongside S51 until the next normal reboot; it is absent from the current boot. Firmware handshake transmit-disabled
 flags are zero. This narrows the investigation without proving packet delivery.
-The new S57 station-counter caller was refused by the existing S49 command
-allowlist before transmission. S49 now has a tested exact-request gate for that
-read-only diagnostic; its rebuilt module awaits fresh-boot validation.
+The new S57 station-counter caller initially hit the S49 command allowlist.
+After a normal restart, the exact read-only request succeeded. The running
+firmware returns a larger counter structure than the local native host decoder;
+only the verified link-header fields are decoded. The firmware moved from the
+2.4 GHz link to the 5 GHz link and reports per-link station addresses different
+from the configured base address. Using the current station address on S55 did
+not produce ARP/DHCP replies. Neither did bounded helper-directed probes with
+that address or the base address; the helper did receive the tethered control.
+This rules out a simple frontend address change as a complete fix.
+
+Reloading S55 exposed another host bug: starting its event cursor at zero fails
+once the 256-record history rolls over. Initialization now locates the oldest
+retained record in at most 32 reads, then replays all retained events. A retained
+successful connection event is still required, later losses override it, and
+history loss while running still stops the frontend. Four host regression tests
+pass; the target W=1 build and live reload succeeded without resetting firmware.
 
 The normal restart reached Fedora and a new boot identity was verified. Signed
 firmware boot, S49 fresh transport, station setup/scan, S50/S51 and secure
