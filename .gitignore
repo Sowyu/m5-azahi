@@ -150,3 +150,5 @@ private/
 *.mp4
 *.wav
 *.aiff
+!/wifi-driver/experiments/common/n1-tx-completion.h
+!/wifi-driver/test_tx_completion.c

@@ -4,10 +4,13 @@ These are handwritten Linux modules and protocol encoders, with their original
 numbered dependencies preserved. No Apple firmware or disassembly is included.
 Target: J714s/T6050, kernel `7.0.13-400.asahi.fc44.aarch64+16k`.
 
-Live results in this table are from September 30. On October 31, S49 gained
-an explicit fresh-boot entry and S55 gained an interface-stop race fix. Both
-revisions are host-tested and cross-compiled only; current target state is
-unverified pending remote access.
+October 31 fresh-boot validation reproduced signed firmware startup, native
+scan, WPA2 association and packet reception. S49–S55 built on the target and
+S55 registered successfully. The first TX exposed an unsupported batch format;
+the corrected S51 decoder is built, sanitizer-tested and verified to accept
+repeated live completions with firmware success. ARP and DHCP got no replies,
+so packet delivery and native IP connectivity remain unproven.
+The table distinguishes the current path from historical recovery experiments.
 
 | Source | State at publication |
 | --- | --- |
@@ -19,9 +22,9 @@ unverified pending remote access.
 | s45, s53 | Root-only, one-attempt connection submission; PMK never logged |
 | s47, s48 | Host-RAM snapshot; reset with unchanged working image (failed after association) |
 | s54 | Successful reset after restoring the boot-populated memswap image |
-| s49, s52 | Transport after s54; explicit fresh S19 entry is compile-only; bounded query/station/scan caller |
-| s50, s51 | Active RX and TX queues; real RX observed, TX not yet exercised |
-| s55 | Temporary packet netdev; built, not loaded at this checkpoint |
+| s49, s52 | Fresh S19 transport verified live; bounded query/station/all-channel passive scan caller |
+| s50, s51 | RX verified; corrected TX decoder accepts live completions, packet delivery still unproven |
+| s55 | Temporary packet netdev registered live; no native IP result yet |
 | common | Bounded ACI encoders/decoders and TX metadata helpers |
 
 `preboot-fresh-boot.sh` is an explicit runtime bring-up script for a fresh target
@@ -39,6 +42,16 @@ Run `python3 wifi-driver/test_lifecycle.py` from the repository root to test
 the actual S49 owner predicate and S55 stop callback with synthetic state.
 The tests do not exercise hardware or substitute for a target build and live
 validation of DMA, packet delivery and shutdown behavior.
+
+Test the portable TX completion decoder with synthetic data, including every
+legal batch placement and missing-member rejection:
+
+```sh
+cc -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined \
+  -I wifi-driver/experiments/common wifi-driver/test_tx_completion.c \
+  -o /tmp/n1-tx-completion-test
+/tmp/n1-tx-completion-test
+```
 
 Build each module against the exact target kernel headers. Companion modules
 require the corresponding transport `Module.symvers` via

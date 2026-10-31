@@ -1,31 +1,57 @@
 # Handoff for the second Mac
 
-## 2026-10-31 resumption
+## 2026-10-31 live resumption
 
-The user has resumed native Wi-Fi work and confirmed Fedora and USB tethering
-are ready. The helper relay was still using its previous network address;
-its listener has been corrected while retaining the existing keys and host
-pins. The target tunnel service still needs the matching endpoint update.
-There is no new target session, boot identity or hardware result yet.
+SSH returned after correcting the target tunnel endpoint. The initial fresh
+boot had no N1 PCI device or experiment modules. The signed ROM/preboot/main
+firmware path succeeded, followed by S49 `fresh=1`, query wraparound, station
+setup, an all-channel 2.4 GHz passive scan, secure WPA2 association and
+continuous receive traffic. S55 registered its temporary packet interface.
+Target W=1 builds passed for S49–S55; optional BTF tooling remains absent.
 
-Offline preparation fixes S55's interface-stop race: a worker finishing during
-cancellation could restore carrier and wake the TX queue. The callback now
-finishes stopping both after joining the worker. The regression test fails on
-the old callback and passes on the corrected one.
+The first TX submission exposed a decoder bug: kind 2/raw flags 5 denote a
+batched transfer completion. The batch carries its last tag and count; the
+WLAN result is the low byte of the opaque word, not the timestamp footer.
+S51 now validates every pending member before returning any ownership. Host
+ASan/UBSan tests cover 16,256 batch placements and gap rejections, bounds,
+stale tags, invalid fields and all result bytes. The fixed module built on the
+target and passed its fresh-boot retry: repeated packet submissions completed
+with firmware result zero, while reception exceeded one thousand packets.
+However, ARP probes received no reply and temporary NetworkManager DHCP timed
+out. Plain and two-byte-prefixed test packets did not obtain replies; a
+single unicast probe was not received by the helper. These results do not yet
+prove over-the-air delivery or a usable IP path.
 
-S49 additionally accepts an explicit `fresh=1` mode after a verified fresh S19
-handoff. This requires a null previous owner; the default retains the exact S54
-reset-marker checks. All other hardware preflight checks remain. Host tests
-cover the mutually exclusive owner states and invalid marker combinations.
-Both revised modules compile as AArch64 objects against the saved target
-headers with warnings as errors; neither revision is linked or live-tested.
+The normal restart reached Fedora and a new boot identity was verified. Signed
+firmware boot, S49 fresh transport, station setup/scan, S50/S51 and secure
+association succeeded again. The current boot has no historical Alpha reset
+chain. The stopped old driver was released by reboot; no DMA owner was
+force-unloaded. Private records identify exact source builds and boot state.
 
-After access returns, collect the current boot, kernel, modules, routes and
-read-only power-state report before choosing a bring-up path. Do not replay
-the old failure/reset sequence to obtain a transport marker. Next live goals
-are a verified fresh association, first successful TX completions, DHCP and
-interface-bound traffic while preserving tethering. Shutdown/reboot diagnosis
-still awaits current driver bindings and a captured failure stage.
+The temporary native interface is unmanaged, up, and has IPv6 disabled and no
+IP address. The failed temporary DHCP profile was removed. A runtime helper
+host route stays pinned through tethering. No persistent Wi-Fi service or
+connection profile was added. Next investigate native TX framing/queue setup
+and confirm actual packet delivery before retrying DHCP. Full cfg80211
+connection integration, recovery and boot startup also remain.
+
+The user additionally requested tethering when the cable is already connected
+at boot. The installed HPM wake implementation permits its state-seven wake
+only with the verified empty-port tuple; the retry wrapper waits for unplug.
+The current boot reached USB_HOST_READY on its first attempt, so this boot's
+log does not reproduce the connected-state refusal. Implement and validate a
+connected-start path from protocol evidence; do not merely remove the guard or
+reload the live USB controller carrying SSH.
+
+The read-only power check confirms `macsmc-reboot` lacks both its OF node and
+bound driver. The Apple watchdog is present and inactive. The device-tree
+shutdown candidate remains uninstalled. One restart reaching the desktop does
+not settle the earlier shutdown/reboot failures; there is no captured final
+kernel shutdown trace from this restart.
+
+The S49 owner guard and S55 stop-race tests still pass. BAR4 remains quarantined;
+no shared PCI/storage reset, firmware publication or persistent Wi-Fi service
+was introduced. Published source contains no credentials or raw captures.
 
 ## Historical Wi-Fi checkpoint
 

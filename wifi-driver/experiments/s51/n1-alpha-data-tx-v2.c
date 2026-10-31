@@ -24,6 +24,7 @@
 #include "../s49/n1-v9-api.h"
 #include "n1-tx-api.h"
 #include "../common/n1-tx-footer.h"
+#include "../common/n1-tx-completion.h"
 #define COUNT 128
 #define BUFFER_SIZE 2048
 #define POOL_SIZE (0x4000 + COUNT*BUFFER_SIZE)
@@ -43,7 +44,7 @@ struct data_tx {
  void *pool;
  dma_addr_t dma;
  struct delayed_work work;
- u16 head,tail;
+ u16 head,tail,next_complete;
  DECLARE_BITMAP(posted,COUNT);
  u16 lengths[COUNT];
  u8 completions[COUNT][32];
@@ -128,26 +129,32 @@ static int open_rings(struct data_tx *s)
 }
 static int drain(struct data_tx *s)
 {
- unsigned int n;
+ unsigned int n,i;
  for (n=0;n<COUNT;n++) {
   u16 head=idx(s,CR_HEAD+2*CR_INDEX),tag;
-  u32 length;
+  struct n1_tx_completion completion;
   u8 *cd;
   if (head>=COUNT) return -EPROTO;
   if (head==s->tail) return 0;
   cd=s->pool+CR_OFF+32*s->tail; dma_rmb();
   if (!get_unaligned_le64(cd) && !get_unaligned_le64(cd+8)) return 0;
-  tag=get_unaligned_le16(cd+4);
-  length=get_unaligned_le16(cd+6)|((get_unaligned_le32(cd+8)&255)<<16);
-  if ((cd[0]!=1 && cd[0]!=3) || get_unaligned_le16(cd+2)!=TR_ID ||
-      tag>=COUNT || !test_bit(tag,s->posted) || length>s->lengths[tag]) {
+  if (n1_decode_tx_completion(cd,32,TR_ID,COUNT,s->next_complete,s->lengths,&completion)) {
    pr_err("N1_DATA_TX2_BAD_CD raw=%*phN; DMA retained\n",32,cd); return -EPROTO;
   }
-  memcpy(s->completions[completed%COUNT],cd,32);
-  if (cd[1]!=4) failed++;
-  if (completed<8) pr_info("N1_DATA_TX2_COMPLETE tag=%u raw=%*phN\n",tag,32,cd);
-  completed++;
-  __clear_bit(tag,s->posted);
+  /* No partial ownership return if any member of the batch is invalid. */
+  for (i=0;i<completion.count;i++)
+   if (!test_bit((completion.first+i)%COUNT,s->posted)) return -EPROTO;
+  if (completed<8) pr_info("N1_DATA_TX2_COMPLETE first=%u last=%u count=%u fw_status=%u raw=%*phN\n",
+   completion.first,completion.last,completion.count,completion.firmware_status,32,cd);
+  for (i=0;i<completion.count;i++) {
+   tag=(completion.first+i)%COUNT;
+   memcpy(s->completions[completed%COUNT],cd,32);
+   if (!n1_tx_firmware_success(completion.firmware_status)) failed++;
+   completed++;
+   __clear_bit(tag,s->posted);
+   s->lengths[tag]=0;
+  }
+  s->next_complete=(completion.last+1)%COUNT;
   memset(cd,0,32); s->tail=(s->tail+1)%COUNT;
   dma_wmb(); putidx(s,CR_TAIL+2*CR_INDEX,s->tail);
  }

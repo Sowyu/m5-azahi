@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
-/* Bounded callers for S41. Only known queries, station setup and one
- * native passive channel1 scan. Owns no DMA; raw copies are private.
+/* Bounded callers for S49. Only known queries, station setup and one
+ * native passive scan. Owns no DMA; raw copies are private.
  */
 #include <linux/module.h>
 #include <linux/etherdevice.h>
@@ -12,6 +12,9 @@
 static bool launch;
 module_param(launch,bool,0400);
 static unsigned int query, sequence=0, repeat=1, completed, received;
+static unsigned int scan_channel=10;
+module_param(scan_channel,uint,0400);
+MODULE_PARM_DESC(scan_channel, "Passive scan channel 1..11, or 0 for all eleven");
 module_param(query,uint,0400);
 module_param(sequence,uint,0400);
 module_param(repeat,uint,0400);
@@ -29,9 +32,9 @@ static ssize_t reply_read(struct file *f,char __user *buf,size_t count,loff_t *p
 static const struct proc_ops ops={.proc_read=reply_read};
 static int __init client_init(void)
 {
-	u8 req[56]={0};
+	u8 req[96]={0};
 	size_t length=24,got;
-	unsigned int i;
+	unsigned int i,channels,end;
 	u16 last_sequence;
 	u8 handle;
 	int ret;
@@ -43,6 +46,7 @@ static int __init client_init(void)
 	    (query!=0 && query!=1 && query!=2 && query!=8 && query!=10 && query!=19 && query!=47 && query!=0x1000f))
 		return -EINVAL;
 	if ((query==1 || query==2 || query==0x1000f) && repeat!=1) return -EINVAL;
+	if (query==0x1000f && scan_channel>11) return -EINVAL;
 	if (query==1) {
 		if (!mac || !mac_pton(mac,req+24) || !is_valid_ether_addr(req+24)) return -EINVAL;
 		length=30;
@@ -53,20 +57,22 @@ static int __init client_init(void)
 		length=25;
 		req[24]=1;
 	} else if (query==0x1000f) {
-		length=56;
-		req[24]=1;
+		channels=scan_channel?1:11;
+		length=52+4*channels;
+		req[24]=(handle+1)%32;
 		req[27]=0x80;
 		req[31]=0x12;
 		put_unaligned_le16(40,req+32);
 		put_unaligned_le16(40,req+34);
 		put_unaligned_le16(120,req+36);
 		put_unaligned_le16(0x104,req+38);
-		put_unaligned_le16(5,req+40);
-		req[42]=1;
-		req[43]=10;
-		put_unaligned_le16(0x165,req+47);
-		put_unaligned_le16(5,req+49);
-		req[53]=1;
+		put_unaligned_le16(1+4*channels,req+40);
+		req[42]=channels;
+		for (i=0;i<channels;i++) req[43+4*i]=scan_channel?scan_channel:i+1;
+		end=43+4*channels;
+		put_unaligned_le16(0x165,req+end);
+		put_unaligned_le16(5,req+end+2);
+		req[end+6]=1;
 	}
 	if (!proc_create("n1_alpha_v9_reply",0400,NULL,&ops)) return -ENOMEM;
 	put_unaligned_le16(length,req+16);

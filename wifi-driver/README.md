@@ -1,15 +1,19 @@
 # Apple N1 bring-up on J714s
 
-**2026-10-31 resumption: offline preparation; no new live Wi-Fi result.**
-S49 now has an explicit `fresh=1` entry for a verified fresh S19 handoff,
-requiring no previous Alpha transport. Its default still requires the exact
-S54 reset marker. The existing PCI, firmware, IPC and IOMMU checks remain.
-S55 now leaves carrier and the TX queue off when an in-flight worker finishes
-during interface shutdown. Host regression tests pass, and both modules compile
-as AArch64 objects against the saved target headers with warnings as errors.
-These revisions have not been linked or loaded on the target. Remote access
-is pending after the helper's network address changed. The September results
-below are historical; the current boot and device ownership remain unverified.
+**2026-10-31: fresh secure association and RX reproduced; TX batch fix live; IP unresolved.**
+Remote access returned, and the current modules built on the target at W=1.
+S49's fresh entry, station setup, passive scan, secure WPA2 association and
+continuous receive traffic succeeded. S55 registered its packet interface.
+The first TX submission returned a valid batch format which the old decoder
+rejected. S51 now validates the entire batch and distinguishes transfer
+completion from the WLAN result. Sanitizer tests cover 16,256 batch placements
+and gap rejections, truncations and invalid fields. After a verified fresh
+boot, repeated TX submissions completed with firmware success and RX remained
+stable. ARP received no reply and DHCP timed out. **Native IP traffic has not
+yet been demonstrated.** See the [current handoff](../docs/HANDOFF.md).
+
+The September sections below are historical; their retained reset owners and
+compile-only frontend status do not describe the October fresh-boot test.
 
 **2026-09-30 checkpoint: native N1 now securely associates to a WPA2-PSK/CCMP
 access point and receives ordinary network packets under Linux.** The firmware
