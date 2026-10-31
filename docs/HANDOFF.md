@@ -2,6 +2,12 @@
 
 ## 2026-10-31 live resumption
 
+Latest checkpoint: native unicast reception works at the configured base address,
+and a Linux UDP socket receives multicast controls through S55. Outgoing replies
+still do not reach the helper, so native Wi-Fi is not yet usable. S55 supports
+address corrections while down and remains down, unmanaged and without an IP
+address. The helper route and working connectivity remain on USB tethering.
+
 SSH returned after correcting the target tunnel endpoint. The initial fresh
 boot had no N1 PCI device or experiment modules. The signed ROM/preboot/main
 firmware path succeeded, followed by S49 `fresh=1`, query wraparound, station
@@ -58,7 +64,7 @@ S58 tests a second station queue opened after association, using the native
 AC1/TID2 mapping, zero peer filter and otherwise unchanged packet metadata.
 Its target W=1 build and guarded preparation passed. Both queue-open commands
 succeeded, and all six unicast probes completed with firmware status zero,
-but the helper received none. S51 also remains healthy at 163 submissions and
+but the helper received none. S51 was then healthy at 163 submissions and
 163 completions. This is a negative diagnostic result, not a TX fix. S58 uses
 the same spare slots as S56; never load both in one boot. S58 is now a pinned
 DMA owner alongside S19/S49/S50/S51 and must not be force-unloaded.
@@ -79,7 +85,7 @@ restores it. Station statistics retained the previous link after disconnect;
 those headers must not authorize carrier independently of connection events.
 S59 owns no DMA; its caller must stop frame producers and verify both TX queues
 are drained. Existing DMA owners remain pinned throughout reconnect.
-Current totals are S51 163/163 and S58 68/68, both with zero reported failures.
+Current totals are S51 227/227 and S58 70/70, both with zero reported failures.
 
 Two attended radio-capture attempts each completed another twenty submissions.
 The second capture also missed its access-point beacon control, so the empty
@@ -91,11 +97,34 @@ These aggregate counters strengthen the radio-exchange evidence but do not
 prove correct payloads, decryption, AP forwarding or end-to-end delivery.
 The older host decoder's receive-counter offsets still do not match this image.
 
-A separate inbound comparison is prepared for multicast and both candidate
-station addresses. Its first attempt stopped in the helper's MAC-display
-verification before sending probes; that check is corrected and temporary
-neighbor entries were removed. It is not evidence of a native receive failure.
-The corrected attended test has not yet run at this checkpoint.
+A separate inbound comparison tested multicast and both candidate station
+addresses. Its first attempt stopped in the helper's MAC-display verification
+before sending probes, so it was not evidence of a receive failure. The
+corrected attended test sent and captured 15 probes: five multicast, five to the
+candidate per-link address, and five to the configured base address. Native RX
+received all multicast and base-address probes, none of the per-link probes.
+All ten received Ethernet frames exactly matched the helper capture. Temporary
+neighbor entries were removed and the bounded watcher exited successfully.
+
+S55 was restored to the configured base address. Its new standard Ethernet
+address setter permits corrections while down and rejects changes while up;
+both cases were verified live after a successful target W=1 build. A reload
+first correctly refused to start because the successful connection event had
+aged out of retained history. One controlled disconnect/reconnect supplied
+fresh evidence, without reboot, reset or DMA-owner unloading.
+
+A standard Linux UDP socket then received nine marked multicast controls and
+sent nine replies, but the helper received none. The first socket test bound
+only a unicast address and could not receive multicast controls; the corrected
+test bound the wildcard address and joined the multicast group. Both tests
+removed their temporary address and neighbor configuration and left S55 down.
+
+Two final short/long AC1 probes completed successfully but did not reach the
+helper; its tethered control did. Counter deltas reflected packet length and
+four retries for the long probe. Offline native-code checks matched 180 isolated
+transfer-descriptor encodings and 40 footer encodings. The descriptor's byte 14
+counts remaining chain fragments, so zero is correct for a single DMA buffer.
+Neither these checks nor the radio counters establish successful payload TX.
 
 Reloading S55 exposed another host bug: starting its event cursor at zero fails
 once the 256-record history rolls over. Initialization now locates the oldest
@@ -113,9 +142,10 @@ force-unloaded. Private records identify exact source builds and boot state.
 The temporary native interface is unmanaged, down, and has IPv6 disabled and no
 IP address. The failed temporary DHCP profile was removed. A runtime helper
 host route stays pinned through tethering. No persistent Wi-Fi service or
-connection profile was added. Next investigate native TX framing/queue setup
-and confirm actual packet delivery before retrying DHCP. Full cfg80211
-connection integration, recovery and boot startup also remain.
+connection profile was added. Next trace the firmware TX data/encryption path
+and confirm actual outgoing delivery before retrying DHCP. Keep the validated
+base Ethernet address; do not replace it with a per-link statistics address.
+Full cfg80211 connection integration, recovery and boot startup also remain.
 
 USB cable-at-boot support is implemented, installed and validated on two reboots.
 The pinned Asahi SN201202x variant uses `cd321x_switch_power_state(S0)` before

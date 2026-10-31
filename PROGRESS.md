@@ -1,6 +1,13 @@
 # Progress
 
-## 2026-10-31: fresh native association, RX and TX completions; IP traffic unresolved
+## 2026-10-31: native unicast RX and Linux UDP reception verified; TX delivery unresolved
+
+The attended inbound test delivered all five multicast probes and all five
+unicast probes addressed to the configured base address. None addressed to the
+candidate per-link address arrived. All ten received Ethernet frames exactly
+matched the helper capture. A Linux UDP socket then received nine marked
+multicast controls through S55, but its replies did not reach the helper.
+Native receive delivery is demonstrated; bidirectional networking is not.
 
 Remote access is restored. A fresh target boot successfully ran signed firmware,
 S49's guarded fresh transport, station setup, passive scanning, secure WPA2
@@ -55,7 +62,21 @@ absence of transmission. Offline tracing places the matching counters in the
 firmware's radio exchange-done handler; the earlier five/seven-packet windows
 show corresponding host frame counts without added host retries. This is
 stronger diagnostic evidence, but correct payload delivery remains unverified.
-An inbound comparison awaits a retry after fixing the helper's address check.
+The corrected inbound comparison subsequently passed for the base address,
+as described above. S55 now permits address changes while down using the
+standard Ethernet helper; changes while running remain rejected. The target
+W=1 build and both live address-change checks passed. One controlled reconnect
+restored retained connection evidence after the previous event aged out;
+no DMA owner was unloaded and no reset or reboot was needed.
+
+Two further short/long probes completed without helper delivery. Radio byte
+counts changed with packet length and the longer probe had retries, but those
+counters do not establish correct payload delivery. Current totals are S51
+227/227 and S58 70/70 completed, both with zero reported failures. An offline
+comparison matched 180 isolated native transfer-descriptor encodings and
+40 packet-footer encodings; single-buffer fragment counts are correctly zero.
+This verifies those encoders, not the complete transmit path. The interface
+is left down at its base address, unmanaged and without an IP address.
 
 Native TX delivery, DHCP/IP traffic, full Linux wireless integration and a
 reliable startup/reconnect lifecycle remain unfinished. The power-state check

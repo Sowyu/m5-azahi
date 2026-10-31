@@ -1,6 +1,12 @@
 # Apple N1 bring-up on J714s
 
-**2026-10-31: fresh secure association and RX reproduced; TX batch fix live; IP unresolved.**
+**2026-10-31: unicast RX and Linux UDP reception verified; native TX delivery unresolved.**
+The attended inbound test received five of five multicast probes and five of
+five unicast probes sent to the configured base address. The candidate per-link
+address received none. All ten received Ethernet frames matched the helper
+capture byte for byte. With S55 restored to the base address, a Linux UDP socket
+received nine multicast controls; none of its replies reached the helper.
+
 Remote access returned, and the current modules built on the target at W=1.
 S49's fresh entry, station setup, passive scan, secure WPA2 association and
 continuous receive traffic succeeded. S55 registered its packet interface.
@@ -9,8 +15,8 @@ rejected. S51 now validates the entire batch and distinguishes transfer
 completion from the WLAN result. Sanitizer tests cover 16,256 batch placements
 and gap rejections, truncations and invalid fields. After a verified fresh
 boot, repeated TX submissions completed with firmware success and RX remained
-stable. ARP received no reply and DHCP timed out. **Native IP traffic has not
-yet been demonstrated.** See the [current handoff](../docs/HANDOFF.md).
+stable. ARP received no reply and DHCP timed out. **Usable bidirectional native
+networking has not been demonstrated.** See the [current handoff](../docs/HANDOFF.md).
 
 The station-counter query also succeeds after a fresh boot. Its link header
 exposes the current link address; matching that address in Linux did not fix
@@ -27,7 +33,7 @@ S56, so the two must never be loaded in the same boot.
 
 Further counted probes reached the corresponding firmware counter block but
 still did not reach the helper. A fresh secure 2.4 GHz connection also completed
-ten packets before roaming, with no delivery. S58 now totals 68 completions and
+ten packets before roaming, with no delivery. S58 now totals 70 completions and
 zero reported failures. The running statistics layout is verified as an 84-byte
 header and three 268-byte radio blocks; individual counter labels remain limited.
 Offline tracing now confirms the transmit frame/retry fields in the radio
@@ -36,7 +42,22 @@ host frame increments without added host retries or expiry/retry-limit failures.
 This does not establish correct payload delivery. Two radio-capture attempts
 also lacked a successful beacon control and cannot establish absence of RF TX.
 The inbound comparison's first attempt stopped before sending because of a
-helper address-format check; its corrected retry is pending.
+helper address-format check; the corrected retry produced the receive results
+above. The base address is the validated Ethernet address for this association;
+the per-link statistics field must not automatically replace it.
+
+S55 now delegates address changes to the standard Ethernet helper, allowing a
+correction while down and rejecting changes while running. Target W=1 build,
+four lifecycle tests and live down/up address-change checks passed. A controlled
+reconnect supplied fresh connection evidence after the previous event aged out;
+existing DMA owners stayed loaded. The frontend is left down with the base
+address and no IP configuration. S51 totals 227 completions with zero failures.
+
+Two additional short/long AC1 probes did not reach the helper despite matching
+radio activity, including retries for the longer frame. Isolated native-code
+comparisons matched 180 transfer-descriptor encodings and 40 footer encodings.
+The single-buffer fragment count is correctly zero. These checks do not verify
+the complete firmware transmit, encryption or access-point forwarding path.
 
 S59 performs a bounded native disconnect without owning DMA or resetting the
 chip. A live disconnect/reconnect succeeded. Event `0x80000004` is now correctly

@@ -150,6 +150,9 @@ static netdev_tx_t net_xmit(struct sk_buff *skb,struct net_device *dev)
 static const struct net_device_ops net_ops={
  .ndo_open=net_open,.ndo_stop=net_stop,.ndo_start_xmit=net_xmit,
  .ndo_validate_addr=eth_validate_addr,
+ /* The standard helper rejects changes while running. Permit correcting the
+  * host address while DOWN without losing retained association evidence. */
+ .ndo_set_mac_address=eth_mac_addr,
 };
 static int __init front_init(void)
 {
