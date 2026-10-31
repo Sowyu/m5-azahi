@@ -10,6 +10,7 @@ installed, and every test module refuses to stay loaded. Read
 | `azahi_smp_t1.c` | Trap over unused loader memory and the sled, release one core, 5 ms status timeline | Loader RAM, CPU_START |
 | `azahi_smp_t2.c` | T1 with `+4` and doorbell separated, then IPI and SEV. `mode=2` releases a whole cluster | Loader RAM, CPU_START |
 | `azahi_smp_t3.c` | T2 after a cluster-control cycle on an idle cluster. Refuses cluster 0 | Loader RAM, cluster control, CPU_START |
+| `azahi_smp_t4.c` | Store-free test: fills with `b .` or `wfi`, verifies both ranges, compares status. **Built, not yet run** | Loader RAM, sled, CPU_START |
 | `stub.s` | Source of the trap instructions embedded in T1 to T3 | n/a |
 | `kiscap.py` | Read-only capture of a DebugUSB channel on the helper | None |
 

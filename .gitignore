@@ -207,5 +207,6 @@ private/
 !/smp/live/azahi_smp_t1.c
 !/smp/live/azahi_smp_t2.c
 !/smp/live/azahi_smp_t3.c
+!/smp/live/azahi_smp_t4.c
 !/smp/live/stub.s
 !/smp/live/kiscap.py
