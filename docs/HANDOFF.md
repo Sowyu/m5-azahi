@@ -22,7 +22,10 @@ confirmed Fedora with a working pointer and trackpad. A second normal restart
 also returned automatically with pointer movement/clicks working. Cold-boot
 logs confirm that initial AFE failure recovered automatically at about ten
 seconds. All four power/input/Wi-Fi/tunnel services were active, with native
-HTTPS verified and no manual repair after boot.
+HTTPS verified and no manual repair after boot. The final restart repeated
+the same automatic AFE recovery at about ten seconds. Both new boot identities
+were verified remotely; the final boot has no failed systemd units, power
+ready, livepatch transition complete, native HTTPS and SSH working.
 
 That restart exposed `No HINT_L`/AFE firmware startup failure. The installed
 driver permanently latches `starting`, so later opens cannot recover.

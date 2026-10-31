@@ -34,7 +34,8 @@ completion without forcing it, opens the trackpad once, and emits an input
 add event so an already-running desktop can discover the recovered device.
 It does not unload or unbind the transport or its parent. On the next cold
 boot, the initial AFE failure recovered automatically at about ten seconds.
-The user confirmed working input after that boot and the following warm restart.
+The following warm restart repeated that automatic recovery. The user confirmed
+working input after both boots, and final service/network checks passed.
 
 ## Checks
 

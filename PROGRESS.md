@@ -12,7 +12,9 @@ The user then powered it on normally and confirmed Fedora and working input.
 A second normal restart also returned automatically with pointer/clicks working.
 The cold-boot logs show the AFE failed initially, then automatic reset/retry
 reached `Touch MT ready` at about ten seconds; power, input, Wi-Fi and tunnel
-services were active, and native HTTPS passed.
+services were active, and native HTTPS passed. The final warm restart repeated
+the automatic input recovery, restored native HTTPS/SSH, and had no failed
+systemd units.
 No boot image, APFS object, macOS installation or boot policy was changed.
 
 The restart also exposed the existing intermittent AFE input failure. A plain

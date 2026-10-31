@@ -35,7 +35,7 @@ ASan/UBSan checks cover byte framing, every shutdown-byte value, preservation
 of unrelated bits, failed replies/readbacks, bounded waits, SMC message IDs,
 single 32-bit writes, and the actual lifecycle callbacks with injected faults.
 Read-only PMU/SMC validation passed on hardware. Two normal restarts returned
-to Fedora. The first also verified native Wi-Fi and SSH; between them, normal
+to Fedora with native Wi-Fi, HTTPS and SSH; between them, normal
 power-off turned the machine fully off without holding the power button.
 Normal power-on restored Fedora, automatic input recovery and native HTTPS.
 The user confirmed pointer/clicks after the final restart.
