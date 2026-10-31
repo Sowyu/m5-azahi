@@ -1,6 +1,53 @@
 # Handoff for the second Mac
 
-## Current checkpoint: native IPv4 internet works
+## Current checkpoint: cfg80211 networking works; boot alert under investigation
+
+Automatic native packet startup was installed and verified through a fresh
+reboot. Native DHCP, Internet and the SSH tunnel returned without tethering.
+The loader now selects the validated live S61 frontend, with S55 as fallback;
+automatic S61 startup has not yet completed its boot check.
+The fresh boot has S19/S49/S50/S51 DMA owners; the historical S58/S60 experiments
+were retired by reboot. Never infer current owners from older notes below.
+
+The S61 cfg80211 frontend registers as normal Wi-Fi and NetworkManager scans
+both bands. Three earlier failed cutovers recovered to S55 automatically.
+After fixing scan-IE capability and allowed-AKM selection, the next connection
+test stalled at interface configuration. Its timed fallback did not restore
+SSH; the user reported unresponsive network controls and could not reach a
+text console. After a power-button restart, packet startup and SSH returned.
+Saved logs identify a null BSSID in cfg80211's success notification: firmware
+association and WPA2 had succeeded first. The frontend now supplies both the
+held BSS and BSSID. The exact faulting instruction was verified against the
+installed kernel module. The regression test rejects the old notification and
+passes the correction; target W=1 build passed. Live retest succeeded: normal
+Wi-Fi DHCP/HTTPS, both-band scanning, automatic roaming, two reconnects and
+Wi-Fi off/on. Eight downloads totaling 2,492,400 bytes matched the helper hash;
+RX drops/errors and TX errors remained zero. A 60-ping test overlapping a scan
+had no loss. Explicit recovery to the packet frontend also succeeded without
+DMA teardown.
+
+S49's persistent link cache, S50's direct RX consumer and S51's pending-count
+API were built at W=1 and loaded in the fresh boot. S61/S62 also built at W=1;
+S62 completed bounded station disconnects during the earlier cutovers. S61's
+new connection-stage logging is included in the target build. wpa_supplicant's
+temporary debug level was restored to info; key display was disabled throughout.
+Firmware, keys, configuration, captures and raw diagnostics remain private.
+
+After these checks, normal Wi-Fi autoconnect and boot selection were enabled.
+The reboot test reached Apple's alert saying the selected disk's macOS needs
+reinstalling, with the Linux disk selected. SSH is unavailable. A full power-off
+and explicit Linux selection were requested; the result is pending. No APFS
+boot object, macOS installation or boot policy was modified. Do not reinstall
+or alter those based solely on the alert. First restore boot/access and verify
+the startup service, normal Wi-Fi netdev and native HTTPS on a new boot.
+
+Temporary diagnostic panic settings were restored to their original values;
+rollback timers are stopped. Firmware, captures and kernel logs stay private.
+General LAN destinations, IPv6, long-duration stability and power management
+remain open. This frontend supports open/WPA2-PSK CCMP and passive discovery,
+not WPA3, enterprise or hidden-SSID active discovery.
+
+## Earlier checkpoint: native IPv4 internet works
 
 S55 with `llc_tx=1` carries DHCP, ARP, ICMP, DNS and HTTPS using the native N1
 radio. NetworkManager's connection is named `Native Wi-Fi`; IPv6 is disabled.

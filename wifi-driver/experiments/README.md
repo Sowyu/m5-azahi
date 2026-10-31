@@ -9,7 +9,15 @@ N1 using S55's opt-in `llc_tx=1` payload conversion. A bulk HTTPS download
 matched an independent copy by SHA-256. The firmware-generated 802.11
 destination still addresses the AP; general LAN bridging and IPv6 remain
 unvalidated. This is a working experimental gateway path with unchanged DMA
-ownership, not a complete wireless driver or an automatic boot installer.
+ownership. A guarded startup bundle now passes a fresh reboot on the pinned
+target, but the public sources are not a general installer.
+
+S61 registers a cfg80211 station with passive 2.4/5 GHz scanning. DHCP/HTTPS,
+reconnect, radio off/on, roaming and direct RX under a 2.49 MB download test are
+verified. A missing BSSID in the connection-success notification caused a kernel
+fault; the corrected notification and regression test are included. Installed
+boot selection is now S61, but the reboot test reached an Apple boot alert
+before Fedora. Automatic S61 startup is not yet verified; see the handoff.
 
 | Source | State at publication |
 | --- | --- |
@@ -26,7 +34,24 @@ ownership, not a complete wireless driver or an automatic boot installer.
 | s55 | Opt-in `llc_tx=1`: native DHCP, DNS, ICMP and HTTPS verified |
 | s56 | Separate MCBC queue accepted live; two broadcast probes completed but got no reply |
 | s57 | Exact station-counter query validated live; link headers can remain stale after disconnect |
+| s61 | Normal Wi-Fi scans, DHCP/HTTPS, reconnect, roaming and host-only recovery verified; boot verification pending |
+| s62 | Host-only disconnect helper for the fresh single-TX-ring bundle; caller must remove all packet frontends |
 | common | Bounded ACI encoders/decoders and TX metadata helpers |
+
+The S61 directory also contains the model/kernel-pinned startup service and
+host-frontend recovery script. They depend on a separately prepared root-only
+configuration, signed firmware and a checked module bundle, none included here.
+They never force-unload DMA owners. A successful build is not authorization to
+load a probe into an unknown ownership state.
+
+S49's link cache separates connection lifetime from the rolling diagnostic
+history. S50 offers a single direct RX consumer with synchronized detach, and
+S51 exposes outstanding TX count. Synthetic checks are available in
+`test_link_state.c`, `test_rx_consumer.py`, `test_wifi_security.py` and
+`test_wifi_notification.py` in the parent directory. They complement the live
+checks and do not establish long-duration stability. The generalized 20 MHz
+channel encoder covers 13 2.4 GHz and 25 5 GHz
+candidates, subject to cfg80211 regulatory limits.
 
 `preboot-fresh-boot.sh` is an explicit runtime bring-up script for a fresh target
 boot. Its target staging path is an experiment convention, not an installer.
@@ -72,10 +97,10 @@ S41–S55 used in this checkpoint. Missing optional BTF tooling was the only bui
 notice. Connection/metadata encoders were additionally compared privately with
 isolated native instructions and the running firmware's TLV parser.
 
-Remaining: general LAN destination handling, IPv6 validation, a proper
-cfg80211 connection interface, bounded high-rate RX delivery, reconnect/reboot
-lifecycle and power management. The temporary Ethernet frontend is a packet
-validation tool and does not replace Linux wireless integration.
+Remaining: general LAN destination handling, IPv6 validation, automatic
+cfg80211 boot verification, extended load/stability checks and power management.
+The temporary Ethernet frontend remains a packet validation/recovery tool;
+S61 supplies the wireless integration for open/WPA2-PSK CCMP networks.
 
 The MCBC probe uses separate data-ring slots and the native broadcast peer,
 AC3/TID6 client data. It retains every published allocation. Its root-only proc

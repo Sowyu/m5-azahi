@@ -5,4 +5,5 @@
 int n1_data_tx_v2(const void *,size_t);
 int n1_data_tx_status_v2(unsigned int *,unsigned int *);
 void n1_data_tx_quiesce_v2(void);
+int n1_data_tx_pending_v2(unsigned int *);
 #endif

@@ -209,6 +209,17 @@ int n1_data_tx_status_v2(unsigned int *done,unsigned int *errors)
  return READ_ONCE(result);
 }
 EXPORT_SYMBOL_GPL(n1_data_tx_status_v2);
+int n1_data_tx_pending_v2(unsigned int *pending)
+{
+ int ret;
+ if (!active || !pending) return -ENODEV;
+ mutex_lock(&active->control->io_lock);
+ *pending=submitted-completed;
+ ret=result;
+ mutex_unlock(&active->control->io_lock);
+ return ret;
+}
+EXPORT_SYMBOL_GPL(n1_data_tx_pending_v2);
 void n1_data_tx_quiesce_v2(void)
 {
  if (!active) return;

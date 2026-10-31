@@ -1,0 +1,17 @@
+[Unit]
+Description=Guarded native N1 Wi-Fi startup
+After=local-fs.target NetworkManager.service azahi-usb.service
+Wants=NetworkManager.service
+Before=azahi-native-tunnel.service
+ConditionPathExists=/etc/azahi-wifi/root-uuid
+
+[Service]
+Type=oneshot
+ExecStart=/opt/azahi-wifi/current/start-native-wifi.sh
+RemainAfterExit=yes
+TimeoutStartSec=180
+UMask=0077
+# No ExecStop or automatic retry: published DMA survives until normal reboot.
+
+[Install]
+WantedBy=multi-user.target

@@ -6,6 +6,7 @@
 #ifndef N1_ACI_CONNECT_H
 #define N1_ACI_CONNECT_H
 #include "n1-wire.h"
+#include "n1-channel.h"
 
 /* Native connectAp first clears previously installed vendor IEs. */
 static inline int n1_build_clear_vendor_ie(n1_u8 *out, size_t capacity,
@@ -114,5 +115,19 @@ static inline int n1_build_connect_91_104_6(n1_u8 *out, size_t capacity,
 	out[length] = out[length + 1] = 0;
 	n1_put16(out + 16, length + 2);
 	return length + 2;
+}
+
+/* Same independently checked command with a validated 20 MHz candidate in
+ * either supported band. Keep the older bounded entry points unchanged. */
+static inline int n1_build_connect_station_91_104_6(n1_u8 *out,size_t capacity,
+	n1_u16 sequence,const n1_u8 bssid[6],unsigned int channel,unsigned int band,
+	const n1_u8 *ssid,size_t ssid_len,const n1_u8 *pmk,size_t pmk_len)
+{
+	n1_u8 encoded[4];
+	int length=n1_channel20(encoded,channel,band);
+	if (length) return length;
+	length=n1_build_connect_91_104_6(out,capacity,sequence,bssid,1,ssid,ssid_len,pmk,pmk_len);
+	if (length>=0) memcpy(out+31,encoded,sizeof(encoded));
+	return length;
 }
 #endif

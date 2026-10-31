@@ -159,3 +159,18 @@ private/
 !/wifi-driver/experiments/s56/Kbuild
 !/wifi-driver/experiments/s57/n1-alpha-sta-counters.c
 !/wifi-driver/experiments/s57/Kbuild
+
+# Reviewed native startup/cfg80211 sources and synthetic tests only.
+!/wifi-driver/experiments/common/n1-channel.h
+!/wifi-driver/experiments/common/n1-link-state.h
+!/wifi-driver/experiments/s61/Kbuild
+!/wifi-driver/experiments/s61/n1-wifi.c
+!/wifi-driver/experiments/s61/start-native-wifi.sh
+!/wifi-driver/experiments/s61/azahi-wifi.service
+!/wifi-driver/experiments/s61/recover-packet.sh
+!/wifi-driver/experiments/s62/Kbuild
+!/wifi-driver/experiments/s62/n1-station-leave.c
+!/wifi-driver/test_link_state.c
+!/wifi-driver/test_rx_consumer.py
+!/wifi-driver/test_wifi_security.py
+!/wifi-driver/test_wifi_notification.py

@@ -29,12 +29,14 @@ a daily-use machine. Never use the reference disk geometry on another SSD.**
 
 ## Current checkpoint, 2026-10-31
 
-Fedora and SSH over USB tethering are running. Tethering with the cable attached
-at boot is implemented and passed two reboot tests; phone-side tethering still
-needs to be enabled. Native N1 firmware boot, scanning, secure association,
-packet reception and transmit completions work experimentally. Native IP
-connectivity remains unresolved, and the Wi-Fi driver is not ready for daily
-use. See [current progress](PROGRESS.md) and [the handoff](docs/HANDOFF.md).
+Native N1 now appears as Wi-Fi in NetworkManager, scans 2.4/5 GHz and carries
+DHCP, DNS and HTTPS. Reconnect, Wi-Fi off/on, firmware roaming and a 2.49 MB
+integrity-checked download test passed. A connection-notification crash was
+identified and fixed. The packet frontend's automatic startup passed a fresh
+reboot; normal Wi-Fi startup is configured, but its reboot test reached an Apple
+boot/reinstall alert before Fedora. Boot recovery is under investigation.
+This remains experimental. See [current progress](PROGRESS.md) and
+[the handoff](docs/HANDOFF.md).
 
 ## Historical status, 2026-09-28 (hardware observed 2026-09-13)
 

@@ -45,6 +45,8 @@ struct data_rx {
 	struct delayed_work work;
 	u16 head, tail;
 	DECLARE_BITMAP(posted,COUNT);
+	n1_rx_consumer_v2 consumer;
+	void *consumer_context;
 	struct data_record records[64];
 };
 static struct data_rx *active;
@@ -169,6 +171,7 @@ static int drain(struct data_rx *s)
 		r=&s->records[received%ARRAY_SIZE(s->records)];
 		r->length=cpu_to_le32(length); r->crid=cpu_to_le32(CR_ID); r->ns=cpu_to_le64(ktime_get_ns());
 		memcpy(r->cd,cd,32); memcpy(r->data,s->pool+BUF_OFF(tag),length);
+		if (s->consumer) s->consumer(s->consumer_context,r->data,length);
 		if (received>=ARRAY_SIZE(s->records)) dropped++;
 		received++; __clear_bit(tag,s->posted);
 		memset(cd,0,32); s->tail=(s->tail+1)%COUNT;
@@ -222,6 +225,28 @@ int n1_data_rx_status_v2(unsigned int *count)
  return READ_ONCE(result);
 }
 EXPORT_SYMBOL_GPL(n1_data_rx_status_v2);
+int n1_data_rx_attach_v2(n1_rx_consumer_v2 consumer,void *context)
+{
+ struct data_rx *s=active;
+ int ret=0;
+ if (!s || !consumer || !context) return -EINVAL;
+ mutex_lock(&s->control->io_lock);
+ if (result || stopping) ret=-ESHUTDOWN;
+ else if (s->consumer) ret=-EBUSY;
+ else { s->consumer_context=context; s->consumer=consumer; }
+ mutex_unlock(&s->control->io_lock);
+ return ret;
+}
+EXPORT_SYMBOL_GPL(n1_data_rx_attach_v2);
+void n1_data_rx_detach_v2(void *context)
+{
+ struct data_rx *s=active;
+ if (!s) return;
+ mutex_lock(&s->control->io_lock);
+ if (s->consumer_context==context) { s->consumer=NULL; s->consumer_context=NULL; }
+ mutex_unlock(&s->control->io_lock);
+}
+EXPORT_SYMBOL_GPL(n1_data_rx_detach_v2);
 void n1_data_rx_quiesce_v2(void)
 {
  if (!active) return;

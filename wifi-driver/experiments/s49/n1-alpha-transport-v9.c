@@ -42,6 +42,7 @@ static bool scan_pending;
 static unsigned int scans_completed, scan_status, scan_results, scan_dwell;
 static u16 scan_sequence;
 static u8 scan_handle;
+static struct n1_link_state link_state;
 module_param(scan_pending,bool,0444);
 module_param(scans_completed,uint,0444);
 module_param(scan_status,uint,0444);
@@ -177,6 +178,7 @@ static int process_event(const u8 *data, unsigned int length)
  struct n1_aci_event e;
  int ret=n1_aci_parse_event(data,length,&e);
  if (ret) return ret;
+ n1_link_event(&link_state,&e);
  if (e.kind==N1_EVENT_SCAN_COMPLETE && scan_pending &&
      e.header.sequence==scan_sequence && e.data.scan.handle==scan_handle) {
   scan_status=e.data.scan.status; scan_results=e.data.scan.results;
@@ -337,6 +339,8 @@ int n1_alpha_exchange_v9(const void *request, size_t length, void *response,
 		scan_sequence=get_unaligned_le16(r+18); scan_handle=r[24]; scan_pending=true;
 	}
 	s->sequence=get_unaligned_le16(r+18);
+	if (cid==0x20000)
+		n1_link_begin(&link_state,s->sequence,get_unaligned_le16(r+98)!=0);
 	s->request_length=length;
 	s->cid=cid;
 	command_pending=true;
@@ -425,6 +429,17 @@ int n1_alpha_cursor_v9(u16 *sequence,u8 *handle)
  return READ_ONCE(result);
 }
 EXPORT_SYMBOL_GPL(n1_alpha_cursor_v9);
+
+int n1_alpha_state_v9(struct n1_link_state *state,unsigned int *cursor)
+{
+ int ret;
+ if (!active || !state || !cursor) return -ENODEV;
+ mutex_lock(&active->io_lock);
+ *state=link_state; *cursor=saved; ret=result;
+ mutex_unlock(&active->io_lock);
+ return ret;
+}
+EXPORT_SYMBOL_GPL(n1_alpha_state_v9);
 
 static int ipc_wait(struct transport *s,u32 want)
 {

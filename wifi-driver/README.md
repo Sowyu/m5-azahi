@@ -17,9 +17,15 @@ cases, in-place conversion and bounds. The matching connection encoder also
 corrects one SSID-entry byte, verified with 24 private native-code comparisons.
 That byte change alone was not the TX fix.
 
-Full cfg80211 controls, startup/reconnect lifecycle, high-rate RX and power
-management remain unfinished. This is working experimental native IPv4, not an
-installable production driver. See the [current handoff](../docs/HANDOFF.md).
+S61 now appears as normal Wi-Fi, scans both bands and carries DHCP/HTTPS. Its
+connection-result crash was fixed by supplying both the AP address and held
+BSS reference to cfg80211. Reconnect, Wi-Fi off/on, roaming and 2.49 MB of
+integrity-checked downloads passed. The packet frontend's automatic startup
+passes a fresh reboot. Normal Wi-Fi startup is configured, but its reboot test
+reached an Apple selected-disk reinstall alert before Fedora; boot recovery is
+pending. Long-duration stability and power management remain unfinished. This
+is experimental, not an installable production driver. See the
+[current handoff](../docs/HANDOFF.md).
 
 ## Earlier October investigation
 

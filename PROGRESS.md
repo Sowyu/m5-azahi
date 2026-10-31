@@ -1,6 +1,56 @@
 # Progress
 
-## 2026-10-31: native Wi-Fi internet traffic verified
+## 2026-10-31: normal Wi-Fi data and lifecycle checks pass; boot check pending
+
+The native packet frontend now starts automatically on the installed, pinned
+kernel. A fresh reboot reached DHCP and Internet connectivity without tethering;
+the management tunnel also returned over native Wi-Fi using explicit routes
+through the gateway. The loader checks its model, kernel, root filesystem,
+private configuration permissions and bundle/firmware hashes before hardware
+work, and refuses a second hardware attempt in the same boot.
+
+S61 registers a cfg80211 station interface. NetworkManager sees scan results
+from both 2.4 and 5 GHz. Its initial scan rejection was fixed by advertising
+the accepted probe-IE size, and its initial connection rejection by selecting
+PSK/CCMP from userspace's allowed alternatives. The subsequent connection test
+stalled at interface configuration, the timed fallback did not restore SSH,
+and network controls became unresponsive. After a power-button restart, packet
+startup and SSH returned. Saved logs show successful association and WPA2,
+followed by a null-address fault in cfg80211's connection-result handler. S61
+supplied a held BSS but omitted its BSSID; the target kernel still copies the
+BSSID on success. The corrected notification supplies both. A regression test
+fails on the old code and passes on the fix, and the target W=1 build passes.
+The live retest passed: S61 obtained DHCP and HTTPS through its Wi-Fi netdev.
+Two disconnect/reconnect cycles and Wi-Fi off/on each restored HTTPS. Firmware
+roaming to 5 GHz was reflected in cfg80211. A manual scan during a 60-ping test
+caused no packet loss. Eight downloads totaling 2,492,400 bytes all matched an
+independent helper copy by SHA-256; the netdev reported no RX drops/errors or
+TX errors. Normal frontend removal and fallback to S55 also restored HTTPS
+without resetting or unloading DMA owners.
+
+The corrected frontend is now selected for startup and its saved connection
+has autoconnect enabled. Startup's timeout covers activation plus fallback,
+and preflight checks the selected frontend's kernel version. The subsequent
+normal restart reached Apple's selected-disk reinstall alert before Fedora,
+with Linux selected. A full power-off and explicit Linux selection are pending.
+Do not claim cfg80211 boot verification or infer that macOS needs reinstalling;
+no macOS, APFS boot image or boot-policy change was made in this update.
+
+S49 now maintains connection evidence independently of its bounded diagnostic
+history. S50 can deliver host copies directly to one registered consumer, with
+detach waiting for an in-flight callback. S51 exposes pending TX count. Host
+sanitizer tests cover association/handshake ordering, stale joins, loss and roam,
+RX registration lifetime, and security-suite selection. The generalized channel
+encoder passed 76 private native-code comparisons; those fixtures remain private.
+Target W=1 builds passed for the transport/frontend bundle, including the new
+connection-stage diagnostics and notification correction.
+
+Remaining: resolve the current boot alert and verify cfg80211 automatic startup.
+Long-duration stability, general LAN destination handling, IPv6 and power
+management remain unfinished. Supported station security is open or WPA2-PSK
+with CCMP; WPA3, enterprise and hidden-SSID active discovery are not implemented.
+
+## Earlier 2026-10-31: native Wi-Fi internet traffic verified
 
 The M5 obtained a DHCP lease and carried router/public-internet pings, DNS and
 HTTPS through the native N1 packet interface. An 852,674-byte HTTPS download
