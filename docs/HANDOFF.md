@@ -35,7 +35,14 @@ only the verified link-header fields are decoded. The firmware moved from the
 from the configured base address. Using the current station address on S55 did
 not produce ARP/DHCP replies. Neither did bounded helper-directed probes with
 that address or the base address; the helper did receive the tethered control.
-This rules out a simple frontend address change as a complete fix.
+This rules out a simple frontend address change as a complete fix. A combined
+retry using the dedicated broadcast queue and current link address also completed
+without matching ARP/DHCP replies. The queue experiment's exact-state guard was
+updated for that observed transport state; it is not a generic startup module.
+
+S49 and S52 now also include the native payload-free interface-status query.
+Its gate rejects flags, non-exact lengths and ACK-only completion. Host tests
+and the target W=1 build pass; live validation requires a fresh transport owner.
 
 Reloading S55 exposed another host bug: starting its event cursor at zero fails
 once the 256-record history rolls over. Initialization now locates the oldest

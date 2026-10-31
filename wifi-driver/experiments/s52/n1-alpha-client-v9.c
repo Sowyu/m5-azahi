@@ -43,9 +43,9 @@ static int __init client_init(void)
 	if (ret) return ret;
 	if (!sequence) sequence=last_sequence==65535?1:last_sequence+1;
 	if (!sequence || !repeat || repeat>32 || sequence+repeat>65536 ||
-	    (query!=0 && query!=1 && query!=2 && query!=8 && query!=10 && query!=19 && query!=47 && query!=0x1000f))
+	    (query!=0 && query!=1 && query!=2 && query!=8 && query!=10 && query!=19 && query!=20 && query!=47 && query!=0x1000f))
 		return -EINVAL;
-	if ((query==1 || query==2 || query==0x1000f) && repeat!=1) return -EINVAL;
+	if ((query==1 || query==2 || query==20 || query==0x1000f) && repeat!=1) return -EINVAL;
 	if (query==0x1000f && scan_channel>11) return -EINVAL;
 	if (query==1) {
 		if (!mac || !mac_pton(mac,req+24) || !is_valid_ether_addr(req+24)) return -EINVAL;

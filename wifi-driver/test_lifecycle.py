@@ -112,13 +112,28 @@ static uint64_t get_unaligned_le64(const u8 *p) {
     for (i=0;i<8;i++) value |= (uint64_t)p[i]<<(8*i);
     return value;
 }
-''' + function("s49/n1-alpha-transport-v9.c", "valid_station_counters") + r'''
+''' + function("s49/n1-alpha-transport-v9.c", "valid_station_counters") +
+              function("s49/n1-alpha-transport-v9.c", "valid_interface_status") + r'''
 int main(void)
 {
     u8 request[47]={0},changed[47];
     unsigned int length,byte,bit;
     request[28]=0x20; request[32]=1;
     request[33]=0x6b; request[34]=1; request[35]=9;
+    {
+        u8 query[25]={0};
+        query[16]=24; query[18]=1; query[20]=20;
+        assert(valid_interface_status(query,24,false));
+        assert(!valid_interface_status(NULL,24,false));
+        assert(!valid_interface_status(query,24,true));
+        for (length=0;length<=sizeof(query)+1;length++)
+            if (length!=24) assert(!valid_interface_status(query,length,false));
+        for (byte=0;byte<16;byte++) for (bit=0;bit<8;bit++) {
+            query[byte]=1u<<bit;
+            assert(!valid_interface_status(query,24,false));
+            query[byte]=0;
+        }
+    }
     assert(valid_station_counters(request,46,false));
     assert(!valid_station_counters(NULL,46,false));
     assert(!valid_station_counters(request,46,true));

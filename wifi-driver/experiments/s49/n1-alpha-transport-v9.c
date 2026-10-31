@@ -296,6 +296,12 @@ static bool valid_station_counters(const u8 *r,size_t length,bool accept_ack)
   get_unaligned_le16(r+33)==0x16b && get_unaligned_le16(r+35)==9 &&
   !get_unaligned_le64(r+37) && !r[45];
 }
+/* Native getInterfaceStatus has no payload or caller-controlled flags. */
+static bool valid_interface_status(const u8 *r,size_t length,bool accept_ack)
+{
+ return r && length==24 && !accept_ack &&
+  !get_unaligned_le64(r) && !get_unaligned_le64(r+8);
+}
 int n1_alpha_exchange_v9(const void *request, size_t length, void *response,
     size_t *response_length, bool accept_ack)
 {
@@ -309,10 +315,11 @@ int n1_alpha_exchange_v9(const void *request, size_t length, void *response,
 	    get_unaligned_le16(r+16)!=length || !get_unaligned_le16(r+18)) return -EINVAL;
 	cid=get_unaligned_le32(r+20);
 	if (cid!=0 && cid!=1 && cid!=2 && cid!=8 && cid!=10 && cid!=19 && cid!=47 && cid!=0x1000f &&
-        cid!=0x1c && cid!=0x20000 && cid!=0x20001 && cid!=0xb0001)
+        cid!=0x1c && cid!=0x20000 && cid!=0x20001 && cid!=0xb0001 && cid!=0x14)
 		return -EOPNOTSUPP;
 	if (r[0] || r[1] || r[12] || r[13]) return -EINVAL;
 	if (cid==0xb0001 && !valid_station_counters(r,length,accept_ack)) return -EINVAL;
+	if (cid==0x14 && !valid_interface_status(r,length,accept_ack)) return -EINVAL;
     if ((cid==0x1c && (length!=25 || r[24]!=0x3f)) ||
         (cid==0x20000 && (length<207 || length>269)) ||
         (cid==0x20001 && length!=40)) return -EINVAL;

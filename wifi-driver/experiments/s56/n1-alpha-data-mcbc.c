@@ -242,7 +242,7 @@ static int __init data_init(void)
 	int ret=-ENODEV;
 	if (!of_machine_is_compatible("apple,j714s")) return ret;
 	ret=n1_data_tx_status_v2(&old_done,&old_errors);
-	if (ret || old_done!=15 || old_errors) return ret?ret:-EBUSY;
+	if (ret || old_done!=12 || old_errors) return ret?ret:-EBUSY;
 	ret=n1_alpha_scan_status_v9(&completed,&status,&count,&pending);
 	if (ret || pending) return ret?ret:-EBUSY;
 	ret=-ENODEV;
@@ -257,8 +257,8 @@ static int __init data_init(void)
 	if (!boot || !boot->alpha || !c || c->magic!=0x5334395452414e53ULL ||
 	    c->shared.owner!=boot->alpha || c->pdev!=p || !c->shared.memory || !c->pool) goto out;
 	mutex_lock(&c->command_lock); mutex_lock(&c->io_lock);
-	if (c->mh!=12 || c->sequence!=25 || c->waiting || c->txhead!=9 || c->txtail!=9 ||
-	    !c->tx_done || !c->response_done || c->command_result || c->cid!=0x20000 ||
+	if (c->mh!=12 || c->sequence!=30 || c->waiting || c->txhead!=14 || c->txtail!=14 ||
+	    !c->tx_done || !c->response_done || c->command_result || c->cid!=0xb0001 ||
 	    readl(boot->bar+0x8000)!=2 || readl(boot->bar+0x8050)!=2) goto unlock;
 	domain=iommu_get_domain_for_dev(&p->dev);
 	if (!domain || !iommu_is_dma_domain(domain)) goto unlock;
