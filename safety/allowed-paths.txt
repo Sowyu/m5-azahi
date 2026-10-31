@@ -567,3 +567,5 @@ wifi-driver/experiments/s59/n1-disconnect-v9.c
 wifi-driver/experiments/s60/Makefile
 wifi-driver/experiments/s60/n1-alpha-data-align.c
 wifi-driver/experiments/s60/README.md
+wifi-driver/experiments/common/n1-tx-msdu.h
+wifi-driver/test_tx_msdu.c

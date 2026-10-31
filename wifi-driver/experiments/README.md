@@ -4,13 +4,12 @@ These are handwritten Linux modules and protocol encoders, with their original
 numbered dependencies preserved. No Apple firmware or disassembly is included.
 Target: J714s/T6050, kernel `7.0.13-400.asahi.fc44.aarch64+16k`.
 
-October 31 fresh-boot validation reproduced signed firmware startup, native
-scan, WPA2 association and packet reception. S49–S55 built on the target and
-S55 registered successfully. The first TX exposed an unsupported batch format;
-the corrected S51 decoder is built, sanitizer-tested and verified to accept
-repeated live completions with firmware success. ARP and DHCP got no replies,
-so packet delivery and native IP connectivity remain unproven.
-The table distinguishes the current path from historical recovery experiments.
+October 31 validation now demonstrates DHCP, DNS, ICMP and HTTPS over native
+N1 using S55's opt-in `llc_tx=1` payload conversion. A bulk HTTPS download
+matched an independent copy by SHA-256. The firmware-generated 802.11
+destination still addresses the AP; general LAN bridging and IPv6 remain
+unvalidated. This is a working experimental gateway path with unchanged DMA
+ownership, not a complete wireless driver or an automatic boot installer.
 
 | Source | State at publication |
 | --- | --- |
@@ -23,10 +22,10 @@ The table distinguishes the current path from historical recovery experiments.
 | s47, s48 | Host-RAM snapshot; reset with unchanged working image (failed after association) |
 | s54 | Successful reset after restoring the boot-populated memswap image |
 | s49, s52 | Fresh S19 transport verified live; bounded query/station/all-channel passive scan caller |
-| s50, s51 | RX verified; corrected TX decoder accepts live completions, packet delivery still unproven |
-| s55 | Temporary packet netdev registered live; no native IP result yet |
+| s50, s51 | RX and TX carry native IPv4 with S55 LLC/SNAP conversion |
+| s55 | Opt-in `llc_tx=1`: native DHCP, DNS, ICMP and HTTPS verified |
 | s56 | Separate MCBC queue accepted live; two broadcast probes completed but got no reply |
-| s57 | Exact station-counter query caller; revised S49 support built/tested, fresh-boot validation pending |
+| s57 | Exact station-counter query validated live; link headers can remain stale after disconnect |
 | common | Bounded ACI encoders/decoders and TX metadata helpers |
 
 `preboot-fresh-boot.sh` is an explicit runtime bring-up script for a fresh target
@@ -73,7 +72,7 @@ S41–S55 used in this checkpoint. Missing optional BTF tooling was the only bui
 notice. Connection/metadata encoders were additionally compared privately with
 isolated native instructions and the running firmware's TLV parser.
 
-Remaining: TX packet delivery, IP configuration and end-to-end traffic, a proper
+Remaining: general LAN destination handling, IPv6 validation, a proper
 cfg80211 connection interface, bounded high-rate RX delivery, reconnect/reboot
 lifecycle and power management. The temporary Ethernet frontend is a packet
 validation tool and does not replace Linux wireless integration.
@@ -90,3 +89,22 @@ previous loaded S49 refused it before submission; the revised S49 admits only
 the exact 46-byte request, with ACK-only completion disabled. Host tests reject
 truncation, extra data and every single-bit change to its payload. A fresh boot
 is required to use the rebuilt DMA-owning S49; do not patch or force-unload it.
+
+### Experimental raw MSDU conversion
+
+`llc_tx=1` is read-only after module load and defaults to off. The helper strips
+the Ethernet addresses, inserts RFC1042 LLC/SNAP, and preserves EtherType and
+network payload. Length-coded 802.3 and bridge-tunnel exceptions are rejected.
+It cannot change the firmware-generated destination; do not describe this as
+complete Ethernet encapsulation support. Firmware still handles encryption.
+
+```sh
+cc -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined \
+  -I wifi-driver/experiments/common wifi-driver/test_tx_msdu.c \
+  -o /tmp/n1-tx-msdu-test
+/tmp/n1-tx-msdu-test
+```
+
+S55 still requires a retained successful connection event at initialization.
+After it ages out, a controlled disconnect/reconnect must supply fresh evidence
+before loading the frontend. Boot automation must not bypass that check.

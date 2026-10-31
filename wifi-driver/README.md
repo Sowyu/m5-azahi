@@ -1,5 +1,30 @@
 # Apple N1 bring-up on J714s
 
+**2026-10-31: native IPv4 internet traffic verified.** The M5 obtains DHCP and
+passes router/public-internet pings, DNS and HTTPS through N1. An 852,674-byte
+HTTPS download matched an independent helper copy by SHA-256. NetworkManager
+reports full connectivity; the native interface is the preferred IPv4 route.
+
+S55 now offers `llc_tx=1`, a bounded Ethernet-II-to-RFC1042 payload conversion.
+A valid radio capture showed the original data frames reaching the AP but
+addressed to the AP itself. LLC/SNAP payloads then received router replies.
+The firmware still supplies the 802.11 destination, so this gateway path does
+not establish general LAN bridging or IPv6 support. The conversion is opt-in,
+with unsupported formats rejected; see [experiment notes](experiments/README.md).
+
+The final target build passes W=1; sanitizer tests cover 7,505 payload/type
+cases, in-place conversion and bounds. The matching connection encoder also
+corrects one SSID-entry byte, verified with 24 private native-code comparisons.
+That byte change alone was not the TX fix.
+
+Full cfg80211 controls, startup/reconnect lifecycle, high-rate RX and power
+management remain unfinished. This is working experimental native IPv4, not an
+installable production driver. See the [current handoff](../docs/HANDOFF.md).
+
+## Earlier October investigation
+
+The following records pre-fix results and superseded live state.
+
 **2026-10-31: unicast RX and Linux UDP reception verified; native TX delivery unresolved.**
 The attended inbound test received five of five multicast probes and five of
 five unicast probes sent to the configured base address. The candidate per-link

@@ -12,6 +12,7 @@
 #include "../s50/n1-data-api.h"
 #include "../s51/n1-tx-api.h"
 #include "../common/n1-aci-events.h"
+#include "../common/n1-tx-msdu.h"
 #define QUEUE_LIMIT 128
 struct n1_front {
  struct net_device *dev;
@@ -24,6 +25,10 @@ struct n1_front {
 static struct net_device *active;
 static char *mac;
 module_param(mac,charp,0400);
+/* Diagnostic for the current firmware's raw MSDU path. Its generated 802.11
+ * destination remains the AP; this is not a general Ethernet bridge mode. */
+static bool llc_tx;
+module_param(llc_tx,bool,0400);
 /* Find the retained history boundary through the existing read API. This is
  * initialization only: events() must still find a successful connection and
  * process every later event. Lost history while running remains fatal.
@@ -87,8 +92,15 @@ static void io_work(struct work_struct *work)
  for(n=0;n<128;n++) {
   skb=skb_dequeue(&s->tx);
   if(!skb) break;
-  if(skb->len>sizeof(s->tx_frame) || skb_copy_bits(skb,0,s->tx_frame,skb->len)) ret=-EMSGSIZE;
-  else ret=n1_data_tx_v2(s->tx_frame,skb->len);
+  if(skb->len<ETH_HLEN || skb->len>sizeof(s->tx_frame) ||
+     skb_copy_bits(skb,0,s->tx_frame,skb->len)) ret=-EMSGSIZE;
+  else {
+   len=skb->len;
+   if(llc_tx) {
+    ret=n1_ethernet_to_snap(s->tx_frame,sizeof(s->tx_frame),s->tx_frame,len);
+    if(ret>=0) ret=n1_data_tx_v2(s->tx_frame,ret);
+   } else ret=n1_data_tx_v2(s->tx_frame,len);
+  }
   if(ret==-EAGAIN) { skb_queue_head(&s->tx,skb); break; }
   if(ret) dev->stats.tx_errors++;
   else { dev->stats.tx_packets++; dev->stats.tx_bytes+=skb->len; }

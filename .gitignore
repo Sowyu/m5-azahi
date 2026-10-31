@@ -152,6 +152,8 @@ private/
 *.aiff
 !/wifi-driver/experiments/common/n1-tx-completion.h
 !/wifi-driver/test_tx_completion.c
+!/wifi-driver/experiments/common/n1-tx-msdu.h
+!/wifi-driver/test_tx_msdu.c
 !/wifi-driver/experiments/s56/n1-alpha-data-mcbc.c
 !/wifi-driver/experiments/s56/n1-mcbc-api.h
 !/wifi-driver/experiments/s56/Kbuild

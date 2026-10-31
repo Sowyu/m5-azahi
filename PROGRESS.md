@@ -1,6 +1,36 @@
 # Progress
 
-## 2026-10-31: native unicast RX and Linux UDP reception verified; TX delivery unresolved
+## 2026-10-31: native Wi-Fi internet traffic verified
+
+The M5 obtained a DHCP lease and carried router/public-internet pings, DNS and
+HTTPS through the native N1 packet interface. An 852,674-byte HTTPS download
+matched an independent helper copy by SHA-256. NetworkManager reports full IPv4
+connectivity and native Wi-Fi is the preferred default route; the helper SSH
+route remains on USB tethering. These are end-to-end results, not just firmware
+completion counters.
+
+A synchronized radio capture contained the AP beacon control and all twenty
+test data frames, with AP block acknowledgments. Their generated destination
+was the AP and their lengths suggested the Ethernet header was not being
+converted. Sending an RFC1042 LLC/SNAP payload produced three of three ARP
+replies. S55 now has an opt-in `llc_tx=1` mode using a bounded, tested encoder.
+It preserves the network payload but does not override the firmware-generated
+802.11 destination. General LAN bridging and IPv6 remain unvalidated.
+
+The matching-version connection encoder also corrects SSID-entry byte one to
+four; 24 full native-code comparisons pass. That correction alone did not fix
+transmit delivery. The final frontend builds at W=1, and sanitizer tests cover
+7,505 payload/type combinations, overlap, bounds and rejected formats.
+
+This is working experimental IPv4 networking, not a production Linux wireless
+driver. Full cfg80211 controls, cold-boot startup, history-independent recovery,
+high-rate RX handling and power management remain unfinished. Reloading S55
+after its retained connection event expires requires a controlled reconnect;
+that reconnect succeeded without resetting or unloading any DMA owner.
+
+## Earlier October 31 investigation (before the payload fix)
+
+### Native unicast RX and Linux UDP reception; initial TX investigation
 
 The attended inbound test delivered all five multicast probes and all five
 unicast probes addressed to the configured base address. None addressed to the

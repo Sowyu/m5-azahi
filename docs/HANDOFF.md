@@ -1,6 +1,36 @@
 # Handoff for the second Mac
 
-## 2026-10-31 live resumption
+## Current checkpoint: native IPv4 internet works
+
+S55 with `llc_tx=1` carries DHCP, ARP, ICMP, DNS and HTTPS using the native N1
+radio. NetworkManager's connection is named `Native Wi-Fi`; IPv6 is disabled.
+Native IPv4 has the preferred default route, while the helper's explicit host
+route stays on USB tethering. A large HTTPS download matched an independent
+copy by SHA-256. Keep the tether available for management/recovery.
+
+The payload fix is bounded RFC1042 conversion from Ethernet II to an MSDU.
+The current firmware-generated 802.11 destination remains the AP, so this is
+an opt-in experimental gateway path, not proof of general Ethernet bridging.
+The radio capture validated both AP beacons and the timed outgoing data frames;
+LLC/SNAP then produced router replies. Firmware success alone was insufficient.
+
+The final S55 target build passes W=1. Host sanitizer checks cover 7,505
+payload/type cases, in-place conversion and fail-without-write bounds checks.
+The matching-version SSID entry correction passes 24 native-code comparisons;
+it was not sufficient to restore TX by itself. Native association was renewed
+successfully after the final frontend reload exhausted retained connection
+history. Do not infer current association from stale station-counter headers.
+
+This remains a runtime research stack. Boot/recovery automation and full
+cfg80211 Wi-Fi controls are unfinished. S19/S49/S50/S51/S58/S60 retain published
+DMA until normal reboot. S55 owns no DMA, but unloading it discards its cached
+link state; if the connection event has aged out, reconnect before loading it.
+No BAR4 access, shared storage/PCI reset or forced DMA-owner unload was used.
+The bulk receive test reported history misses, so high-rate RX needs work.
+
+The sections below record the earlier investigation and superseded live state.
+
+## Earlier 2026-10-31 live resumption
 
 Latest checkpoint: native unicast reception works at the configured base address,
 and a Linux UDP socket receives multicast controls through S55. Outgoing replies

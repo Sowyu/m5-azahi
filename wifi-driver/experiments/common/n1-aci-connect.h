@@ -105,6 +105,10 @@ static inline int n1_build_connect_91_104_6(n1_u8 *out, size_t capacity,
 	n1_put32(out + 171, 2000);
 	n1_put32(out + 175, 15000);
 	n1_put32(out + 179, 300);
+	/* Matching 26A428 connectAp sets byte one of the SSID entry to four.
+	 * The older host encoder above leaves it zero. Keep this versioned
+	 * command identical to the matching native encoder's bounded path. */
+	out[188] = 4;
 	/* GlobalConfig is the final TLV in this bounded encoder. */
 	n1_put16(out + length - 14, 14);
 	out[length] = out[length + 1] = 0;
