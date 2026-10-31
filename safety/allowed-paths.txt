@@ -562,3 +562,5 @@ wifi-driver/experiments/s57/Kbuild
 wifi-driver/experiments/s58/n1-alpha-data-ac1.c
 wifi-driver/experiments/s58/n1-ac1-api.h
 wifi-driver/experiments/s58/Kbuild
+wifi-driver/experiments/s59/Kbuild
+wifi-driver/experiments/s59/n1-disconnect-v9.c

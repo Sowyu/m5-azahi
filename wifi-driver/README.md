@@ -25,6 +25,18 @@ completed successfully but none arrived. This source records a negative
 experiment, not working TX. It retains its DMA and shares spare ring slots with
 S56, so the two must never be loaded in the same boot.
 
+Further counted probes reached the corresponding firmware counter block but
+still did not reach the helper. A fresh secure 2.4 GHz connection also completed
+ten packets before roaming, with no delivery. S58 now totals 28 completions and
+zero reported failures. The running statistics layout is verified as an 84-byte
+header and three 268-byte radio blocks; individual counter labels remain limited.
+
+S59 performs a bounded native disconnect without owning DMA or resetting the
+chip. A live disconnect/reconnect succeeded. Event `0x80000004` is now correctly
+named disconnect completion; tests cover clearing carrier on successful
+disconnect and restoring it after a later connection. Statistics can retain
+historical link addresses after disconnect and must not establish carrier.
+
 The September sections below are historical; their retained reset owners and
 compile-only frontend status do not describe the October fresh-boot test.
 

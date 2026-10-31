@@ -182,7 +182,7 @@ static int process_event(const u8 *data, unsigned int length)
    scan_sequence,scan_handle,scan_status,scan_results,scan_dwell);
  }
  if (e.kind==N1_EVENT_CONNECT_COMPLETE || e.kind==N1_EVENT_ASSOCIATED ||
-     e.kind==N1_EVENT_CONNECTION_LOST || e.kind==N1_EVENT_CONNECTION_FAILED ||
+     e.kind==N1_EVENT_CONNECTION_LOST || e.kind==N1_EVENT_DISCONNECT_COMPLETE ||
      e.kind==N1_EVENT_FOUR_WAY)
   pr_info("N1_V8_LINK_EVENT kind=%u seq=%u status=%u detail=%u stage=%u\n",
    e.kind,e.header.sequence,e.header.status,

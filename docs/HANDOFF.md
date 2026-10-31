@@ -63,6 +63,24 @@ but the helper received none. S51 also remains healthy at 163 submissions and
 the same spare slots as S56; never load both in one boot. S58 is now a pinned
 DMA owner alongside S19/S49/S50/S51 and must not be force-unloaded.
 
+A counted AC1 experiment tracked five then seven submissions in the matching
+radio-counter block, with no helper delivery. The running report layout is now
+verified as an 84-byte header plus three 268-byte blocks; the older host's
+counter labels cannot be applied wholesale. A fresh secure 2.4 GHz reconnect
+then completed ten more probes before any band switch, using both the active
+link and configured addresses. None reached the helper, so the automatic roam
+is not the sole cause. Firmware completion still does not prove packet delivery.
+
+The bounded S59 disconnect caller completed without a reset. Native dispatch
+and the live response establish event `0x80000004` as disconnect completion,
+not connection failure. The decoder name is corrected and regression coverage
+checks that successful disconnect clears carrier and a later connection
+restores it. Station statistics retained the previous link after disconnect;
+those headers must not authorize carrier independently of connection events.
+S59 owns no DMA; its caller must stop frame producers and verify both TX queues
+are drained. Existing DMA owners remain pinned throughout reconnect.
+Current totals are S51 163/163 and S58 28/28, both with zero reported failures.
+
 Reloading S55 exposed another host bug: starting its event cursor at zero fails
 once the 256-record history rolls over. Initialization now locates the oldest
 retained record in at most 32 reads, then replays all retained events. A retained

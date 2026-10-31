@@ -60,7 +60,7 @@ static int events(struct n1_front *s)
   s->event_cursor++;
   if(n1_aci_parse_event(s->event,len,&event)) continue;
   if(event.kind==N1_EVENT_CONNECT_COMPLETE) s->linked=!event.header.status;
-  else if(event.kind==N1_EVENT_CONNECTION_LOST || event.kind==N1_EVENT_CONNECTION_FAILED)
+  else if(event.kind==N1_EVENT_CONNECTION_LOST || event.kind==N1_EVENT_DISCONNECT_COMPLETE)
    s->linked=false;
  }
  return -EOVERFLOW;

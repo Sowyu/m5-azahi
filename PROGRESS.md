@@ -32,6 +32,23 @@ them to the helper. These negative tests narrow the investigation; they do not
 establish an over-the-air transmit path. The new queue source is S58 and remains
 pinned with the other DMA owners until reboot.
 
+A counted AC1 experiment tracked five then seven submissions in the matching
+radio-counter block, with no helper delivery. The running report layout is now
+verified as an 84-byte header plus three 268-byte blocks; the older host's
+counter labels cannot be applied wholesale. A fresh secure 2.4 GHz reconnect
+then completed ten more probes before any band switch, using both the active
+link and configured addresses. None reached the helper, so the automatic roam
+is not the sole cause. Firmware completion still does not prove packet delivery.
+
+The bounded S59 disconnect caller completed without a reset. Native dispatch
+and the live response establish event `0x80000004` as disconnect completion,
+not connection failure. The decoder name is corrected and regression coverage
+checks that successful disconnect clears carrier and a later connection
+restores it. Station statistics retained the previous link after disconnect;
+those headers must not authorize carrier independently of connection events.
+S59 owns no DMA; its caller must stop frame producers and verify both TX queues
+are drained. Existing DMA owners remain pinned throughout reconnect.
+
 Native TX delivery, DHCP/IP traffic, full Linux wireless integration and a
 reliable startup/reconnect lifecycle remain unfinished. The power-state check
 also confirms the missing SMC reboot device-tree node and an inactive Apple

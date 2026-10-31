@@ -9,7 +9,7 @@
 
 enum n1_event_kind {
 	N1_EVENT_OTHER, N1_EVENT_CONNECT_COMPLETE, N1_EVENT_ASSOCIATED,
-	N1_EVENT_CONNECTION_LOST, N1_EVENT_CONNECTION_FAILED,
+	N1_EVENT_CONNECTION_LOST, N1_EVENT_DISCONNECT_COMPLETE,
 	N1_EVENT_SCAN_COMPLETE, N1_EVENT_FOUR_WAY
 };
 struct n1_aci_header {
@@ -84,8 +84,10 @@ static inline int n1_aci_parse_event(const n1_u8 *data, size_t length,
 		e.data.lost.reason = data[24];
 		memcpy(e.data.lost.bssid, data + 25, 6);
 		break;
+	/* Native STA dispatcher routes event4 to disconnect completion.
+	 * A connection failure instead uses a failed connect-complete status. */
 	case 4:
-		e.kind = N1_EVENT_CONNECTION_FAILED;
+		e.kind = N1_EVENT_DISCONNECT_COMPLETE;
 		break;
 	case 5:
 		if (length < 33) return -EMSGSIZE;

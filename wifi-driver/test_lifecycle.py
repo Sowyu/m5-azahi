@@ -43,7 +43,7 @@ class LifecycleTests(unittest.TestCase):
 #include <stdbool.h>
 #include "n1-aci-events.h"
 struct n1_front { unsigned int event_cursor; bool linked; unsigned char event[4096]; };
-static unsigned int saved, connect_at, lost_at, calls;
+static unsigned int saved, connect_at, lost_at, disconnect_at=~0U, calls;
 static bool connect_ok, roll_after_search;
 static int forced_error;
 static int n1_alpha_record_v9(unsigned int index, unsigned int *ring,
@@ -58,6 +58,7 @@ static int n1_alpha_record_v9(unsigned int index, unsigned int *ring,
     if (roll_after_search) return -EOVERFLOW;
     if (index==connect_at) { cid=0x80000000U; len=114; }
     if (index==lost_at) { cid=0x80000003U; len=31; }
+    if (index==disconnect_at) { cid=0x80000004U; len=24; }
     assert(*length>=len); memset(p,0,len); *length=len; *ring=0;
     p[0]=0x43; p[1]=24; p[16]=len;
     if (index==connect_at && !connect_ok) p[14]=1;
@@ -82,6 +83,23 @@ int main(void)
         lost_at=i==2?101:~0U;
         assert(initial_event_cursor(&s)==0 && s.event_cursor==36);
         assert(events(&s)==0 && s.linked==(i==3));
+    }
+    {
+        struct n1_front s={0};
+        struct n1_aci_event event;
+        unsigned int ring;
+        size_t length=sizeof(s.event);
+        saved=292; connect_at=100; connect_ok=true; lost_at=~0U;
+        disconnect_at=101;
+        assert(n1_alpha_record_v9(disconnect_at,&ring,s.event,&length)==0);
+        assert(n1_aci_parse_event(s.event,length,&event)==0);
+        assert(event.kind==N1_EVENT_DISCONNECT_COMPLETE);
+        assert(event.header.status==0); /* successful disconnect still clears link */
+        assert(initial_event_cursor(&s)==0 && events(&s)==0 && !s.linked);
+        /* A later successful connection restores link after disconnect. */
+        s.event_cursor=0; s.linked=false; connect_at=102;
+        assert(initial_event_cursor(&s)==0 && events(&s)==0 && s.linked);
+        disconnect_at=~0U;
     }
     {
         struct n1_front s={0};
