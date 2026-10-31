@@ -16,8 +16,10 @@ did. The target W=1 build, non-launching preparation and invalid-input checks
 passed. S60 is a pinned DMA owner with six submissions and six completions;
 its ring slots must remain reserved until normal reboot. Offline comparisons
 also verified 64 complete native TX entries, including metadata initialization
-and placement. These results rule out those tested layout/alignment changes as
-fixes; transmit delivery remains unresolved.
+and placement. The matching macOS build's DriverKit cache has now been extracted
+privately; another 64 complete-entry comparisons against that version passed.
+The two inspected versions agree on this encoding. These results rule out the
+tested layout/alignment changes as fixes; transmit delivery remains unresolved.
 
 Remote access is restored. A fresh target boot successfully ran signed firmware,
 S49's guarded fresh transport, station setup, passive scanning, secure WPA2
