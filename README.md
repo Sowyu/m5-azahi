@@ -33,8 +33,9 @@ Native N1 now appears as Wi-Fi in NetworkManager, scans 2.4/5 GHz and carries
 DHCP, DNS and HTTPS. Reconnect, Wi-Fi off/on, firmware roaming and a 2.49 MB
 integrity-checked download test passed. A connection-notification crash was
 identified and fixed. The packet frontend's automatic startup passed a fresh
-reboot; normal Wi-Fi startup is configured, but its reboot test reached an Apple
-boot/reinstall alert before Fedora. Boot recovery is under investigation.
+boot. A warm restart reached an Apple boot alert; a full power-off recovered
+Fedora. Normal Wi-Fi startup exposed a NetworkManager readiness race, now fixed
+with a bounded readiness check; its next cold-boot verification is pending.
 This remains experimental. See [current progress](PROGRESS.md) and
 [the handoff](docs/HANDOFF.md).
 

@@ -16,8 +16,10 @@ S61 registers a cfg80211 station with passive 2.4/5 GHz scanning. DHCP/HTTPS,
 reconnect, radio off/on, roaming and direct RX under a 2.49 MB download test are
 verified. A missing BSSID in the connection-success notification caused a kernel
 fault; the corrected notification and regression test are included. Installed
-boot selection is now S61, but the reboot test reached an Apple boot alert
-before Fedora. Automatic S61 startup is not yet verified; see the handoff.
+boot selection is now S61. A warm restart reached an Apple boot alert; cold boot
+recovered Fedora but exposed a NetworkManager readiness race and used S55.
+The startup script now waits for the matching Wi-Fi device to become ready;
+its cold-boot verification is pending. See the handoff.
 
 | Source | State at publication |
 | --- | --- |
@@ -48,7 +50,9 @@ S49's link cache separates connection lifetime from the rolling diagnostic
 history. S50 offers a single direct RX consumer with synchronized detach, and
 S51 exposes outstanding TX count. Synthetic checks are available in
 `test_link_state.c`, `test_rx_consumer.py`, `test_wifi_security.py` and
-`test_wifi_notification.py` in the parent directory. They complement the live
+`test_wifi_notification.py` in the parent directory. `test_wifi_startup.py`
+exercises the actual shell readiness gate with a mocked NetworkManager.
+These tests complement the live
 checks and do not establish long-duration stability. The generalized 20 MHz
 channel encoder covers 13 2.4 GHz and 25 5 GHz
 candidates, subject to cfg80211 regulatory limits.

@@ -14,6 +14,19 @@ check() {
 private_file() {
     [[ -f $1 && ! -L $1 && $(stat -c '%u:%a' "$1") == 0:600 ]] || die "Private configuration permissions: $1"
 }
+# udev completion does not imply that NetworkManager's supplicant is ready.
+# Wait for NM to leave unknown/unmanaged/unavailable before asking to connect.
+wait_wifi_ready() {
+    local iface=$1 state attempt
+    for ((attempt=0;attempt<100;attempt++)); do
+        state=$(LC_ALL=C nmcli -g GENERAL.STATE device show "$iface" 2>/dev/null) || state=0
+        state=${state%% *}
+        case $state in 30|40|50|60|70|80|90|100) return 0 ;; esac
+        sleep 0.1
+    done
+    printf '%s\n' 'N1_START: NetworkManager Wi-Fi readiness timed out' >&2
+    return 1
+}
 [[ $EUID == 0 ]] || die 'Requires root.'
 [[ $(uname -r) == 7.0.13-400.asahi.fc44.aarch64+16k ]] || die 'Unsupported kernel; rebuild and validate before enabling.'
 grep -qazx 'apple,j714s' /proc/device-tree/compatible || die 'Unsupported model.'
@@ -114,7 +127,14 @@ done
 if [[ $frontend == wifi ]]; then
     if modprobe cfg80211 && insmod s61/n1-wifi.ko mac="$station_mac"; then
         udevadm settle --timeout=5
-        if nmcli --wait 45 connection up "$wifi_profile" >/dev/null; then
+        wifi_iface=
+        for net in /sys/class/net/*; do
+            [[ -d $net/phy80211 && $(cat "$net/address") == "$station_mac" ]] || continue
+            [[ -z $wifi_iface ]] || die 'Ambiguous station interface.'
+            wifi_iface=${net##*/}
+        done
+        if [[ -n $wifi_iface ]] && wait_wifi_ready "$wifi_iface" &&
+            nmcli --wait 45 connection up "$wifi_profile" ifname "$wifi_iface" >/dev/null; then
             printf '%s\n' 'N1_START_READY: native cfg80211 Wi-Fi active'
             exit 0
         fi

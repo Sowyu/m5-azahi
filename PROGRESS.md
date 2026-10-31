@@ -32,9 +32,16 @@ The corrected frontend is now selected for startup and its saved connection
 has autoconnect enabled. Startup's timeout covers activation plus fallback,
 and preflight checks the selected frontend's kernel version. The subsequent
 normal restart reached Apple's selected-disk reinstall alert before Fedora,
-with Linux selected. A full power-off and explicit Linux selection are pending.
-Do not claim cfg80211 boot verification or infer that macOS needs reinstalling;
-no macOS, APFS boot image or boot-policy change was made in this update.
+with Linux selected. A full power-off and explicit Linux selection recovered
+Fedora without reinstalling anything. The startup log then exposed a race:
+activation was requested four milliseconds before the supplicant became ready,
+so the loader immediately used the working S55 fallback. Startup now waits up
+to ten seconds for the matching Wi-Fi device's NetworkManager state to become
+ready, then activates the profile on that interface. Tests of the actual shell
+function cover delayed readiness, an already connected interface and bounded
+unavailable/failed timeouts. The fix is installed; another cold-boot check is
+pending. The warm-restart alert's cause remains unresolved. No macOS, APFS boot
+image or boot-policy change was made in this update.
 
 S49 now maintains connection evidence independently of its bounded diagnostic
 history. S50 can deliver host copies directly to one registered consumer, with
@@ -45,7 +52,8 @@ encoder passed 76 private native-code comparisons; those fixtures remain private
 Target W=1 builds passed for the transport/frontend bundle, including the new
 connection-stage diagnostics and notification correction.
 
-Remaining: resolve the current boot alert and verify cfg80211 automatic startup.
+Remaining: verify the readiness fix through cfg80211 automatic startup and
+investigate the warm-restart alert.
 Long-duration stability, general LAN destination handling, IPv6 and power
 management remain unfinished. Supported station security is open or WPA2-PSK
 with CCMP; WPA3, enterprise and hidden-SSID active discovery are not implemented.

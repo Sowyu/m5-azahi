@@ -174,3 +174,4 @@ private/
 !/wifi-driver/test_rx_consumer.py
 !/wifi-driver/test_wifi_security.py
 !/wifi-driver/test_wifi_notification.py
+!/wifi-driver/test_wifi_startup.py

@@ -21,9 +21,10 @@ S61 now appears as normal Wi-Fi, scans both bands and carries DHCP/HTTPS. Its
 connection-result crash was fixed by supplying both the AP address and held
 BSS reference to cfg80211. Reconnect, Wi-Fi off/on, roaming and 2.49 MB of
 integrity-checked downloads passed. The packet frontend's automatic startup
-passes a fresh reboot. Normal Wi-Fi startup is configured, but its reboot test
-reached an Apple selected-disk reinstall alert before Fedora; boot recovery is
-pending. Long-duration stability and power management remain unfinished. This
+passes a fresh boot. A warm restart reached an Apple boot alert; a full power-off
+recovered Fedora. Normal Wi-Fi startup then exposed a NetworkManager readiness
+race. The installed readiness fix awaits another cold-boot check. Long-duration
+stability, warm restart and power management remain unfinished. This
 is experimental, not an installable production driver. See the
 [current handoff](../docs/HANDOFF.md).
 

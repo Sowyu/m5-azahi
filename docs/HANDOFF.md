@@ -35,11 +35,19 @@ Firmware, keys, configuration, captures and raw diagnostics remain private.
 
 After these checks, normal Wi-Fi autoconnect and boot selection were enabled.
 The reboot test reached Apple's alert saying the selected disk's macOS needs
-reinstalling, with the Linux disk selected. SSH is unavailable. A full power-off
-and explicit Linux selection were requested; the result is pending. No APFS
-boot object, macOS installation or boot policy was modified. Do not reinstall
-or alter those based solely on the alert. First restore boot/access and verify
-the startup service, normal Wi-Fi netdev and native HTTPS on a new boot.
+reinstalling, with the Linux disk selected. A full power-off and explicit Linux
+selection recovered Fedora and SSH without repair. Automatic S61 activation
+raced supplicant readiness by four milliseconds and fell back to healthy S55.
+The installed startup script now identifies the Wi-Fi interface by its saved
+station address and waits for NetworkManager readiness before activation.
+The actual shell function passes delayed-ready and bounded-timeout tests.
+Another clean shutdown/cold boot was requested to verify this change; the
+result is pending and SSH is unavailable while the target is down.
+
+No APFS boot object, macOS installation or boot policy was modified. Do not
+reinstall or alter those based solely on the alert. Next verify the startup
+service, normal Wi-Fi netdev and native HTTPS on the new boot. Warm-restart
+reliability remains unresolved; do not claim it was fixed by the readiness gate.
 
 Temporary diagnostic panic settings were restored to their original values;
 rollback timers are stopped. Firmware, captures and kernel logs stay private.
